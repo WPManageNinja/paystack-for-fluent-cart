@@ -76,11 +76,18 @@ class PaystackGateway extends AbstractPaymentGateway
     {
         $this->checkCurrencySupport();
 
+        $publicKey = (new Settings\PaystackSettingsBase())->getPublicKey();
+
         wp_send_json([
             'status'       => 'success',
             'message'      => __('Order info retrieved!', 'paystack-for-fluent-cart'),
-            'data'         => [],
-            'payment_args' => [],
+            'intent'         => [
+                'amount' => 12900,
+                'currency' => 'NGN'
+            ],
+            'payment_args' => [
+                'public_key' => $publicKey
+            ],
         ], 200);
     }
 

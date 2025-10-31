@@ -6,21 +6,25 @@ use PaystackFluentCart\Settings\PaystackSettingsBase;
 
 class PaystackAPI
 {
-    private $baseUrl = 'https://api.paystack.co';
-    private $settings;
-
-    public function __construct()
-    {
-        $this->settings = new PaystackSettingsBase();
-    }
+    private static $baseUrl = 'https://api.paystack.co/';
+    private static $settings = null;
 
     /**
-     * Make API request to Paystack
+     * Get settings instance
      */
-    private function request($endpoint, $method = 'GET', $data = [])
+    public static function getSettings()
     {
-        $url = $this->baseUrl . $endpoint;
-        $secretKey = $this->settings->getSecretKey();
+        if (!self::$settings) {
+            self::$settings = new PaystackSettingsBase();
+        }
+        return self::$settings;
+    }
+
+
+    private static function request($endpoint, $method = 'GET', $data = [])
+    {
+        $url = self::$baseUrl . $endpoint;
+        $secretKey = self::getSettings()->getSecretKey();
 
         $args = [
             'method'  => $method,
@@ -57,66 +61,20 @@ class PaystackAPI
         return $decoded;
     }
 
-    /**
-     * Initialize transaction
-     */
-    public function initializeTransaction($data)
+
+    public static function getPaystackObject($endpoint, $params = [])
     {
-        return $this->request('/transaction/initialize', 'POST', $data);
+        return self::request($endpoint, 'GET', $params);
     }
 
-    /**
-     * Verify transaction
-     */
-    public function verifyTransaction($reference)
+    public static function createPaystackObject($endpoint, $data = [])
     {
-        return $this->request('/transaction/verify/' . $reference, 'GET');
+        return self::request($endpoint, 'POST', $data);
     }
 
-    /**
-     * Create subscription
-     */
-    public function createSubscription($data)
+    public static function deletePaystackObject($endpoint, $data = [])
     {
-        return $this->request('/subscription', 'POST', $data);
-    }
-
-    /**
-     * Disable subscription
-     */
-    public function disableSubscription($code, $token)
-    {
-        return $this->request('/subscription/disable', 'POST', [
-            'code' => $code,
-            'token' => $token
-        ]);
-    }
-
-    /**
-     * Create refund
-     */
-    public function createRefund($reference, $amount)
-    {
-        return $this->request('/refund', 'POST', [
-            'transaction' => $reference,
-            'amount' => $amount
-        ]);
-    }
-
-    /**
-     * Get transaction
-     */
-    public function getTransaction($id)
-    {
-        return $this->request('/transaction/' . $id, 'GET');
-    }
-
-    /**
-     * Get subscription
-     */
-    public function getSubscription($code)
-    {
-        return $this->request('/subscription/' . $code, 'GET');
+        return self::request($endpoint, 'POST', $data);
     }
 }
 
