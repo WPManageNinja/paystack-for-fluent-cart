@@ -123,11 +123,6 @@ class PaystackCheckout {
                 transition: all 0.2s ease;
             }
             
-            .fct-method:hover {
-                border-color: #0c7fdc;
-                background: #f0f7ff;
-            }
-            
             .fct-method-name {
                 font-size: 12px;
                 font-weight: 500;
@@ -402,7 +397,7 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
         response = await response.json();
         if (response?.status === 'failed') {
             displayErrorMessage(response?.message);
-            this.paymentLoader.disableCheckoutButton(this.translate(this.submitButton.text));
+            return;
         }
         new PaystackCheckout(e.detail.form, e.detail.orderHandler, response, e.detail.paymentLoader).init();
     }).catch(error => {
