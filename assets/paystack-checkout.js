@@ -1,4 +1,5 @@
 class PaystackCheckout {
+    #cdnUrl = 'https://js.paystack.co/v2/inline.js';
     #publicKey = null;
     constructor(form, orderHandler, response, paymentLoader) {
         this.form = form;
@@ -10,79 +11,151 @@ class PaystackCheckout {
         this.#publicKey = response?.payment_args?.public_key;
     }
 
+     init() {
+        this.paymentLoader.enableCheckoutButton(this.translate(this.submitButton.text));
+        const that = this;        
+        const paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
+        if (paystackContainer) {
+            paystackContainer.innerHTML = '';
+        }
+
+        // render info
+
+        this.renderPaymentInfo();
+
+
+        this.#publicKey = this.data?.payment_args?.public_key;
+
+        window.addEventListener("fluent_cart_payment_next_action_paystack", async(e) => {
+
+            const remoteResponse = e.detail?.response;           
+            const access_code = remoteResponse?.data?.paystack_data?.access_code;
+            const authorizationUrl = remoteResponse?.data?.paystack_data?.authorization_url;
+            const intent = remoteResponse?.data?.intent;
+
+             if (access_code && authorizationUrl) {
+                this.paymentLoader.hideLoader();
+                if (intent === 'onetime') {
+                    this.onetimePaymentHandler(access_code, authorizationUrl);
+                } else if (intent === 'subscription') {
+                    this.paystackSubscriptionPayment(access_code, authorizationUrl);
+                }
+             }
+               
+        });
+    }
+
     translate(string) {
         const translations = window.fct_paystack_data?.translations || {};
         return translations[string] || string;
     }
 
     renderPaymentInfo() {
-        let html = '<div class="paystack-payment-info">';
-        html += '<div class="paystack-payment-container">';
-        html += '<div class="paystack-logo">';
-        html += '<img src="https://paystack.com/assets/img/logos/paystack-logo-color.svg" alt="Paystack" />';
+        let html = '<div class="fct-paystack-info">';
+        
+        // Simple header
+        html += '<div class="fct-paystack-header">';
+        html += '<h3 class="fct-paystack-heading">Paystack</h3>';
+        html += '<p class="fct-paystack-subheading">' + this.$t('Secure payment') + '</p>';
         html += '</div>';
-        html += '<p class="paystack-description">' + this.$t('Pay securely with Paystack') + '</p>';
-        html += '<div class="paystack-payment-methods">';
-        html += '<span class="payment-badge">' + this.$t('Cards') + '</span>';
-        html += '<span class="payment-badge">' + this.$t('Bank Transfer') + '</span>';
-        html += '<span class="payment-badge">' + this.$t('USSD') + '</span>';
-        html += '<span class="payment-badge">' + this.$t('QR Code') + '</span>';
+        
+        // Payment methods
+        html += '<div class="fct-paystack-methods">';
+        html += '<div class="fct-method">';
+        html += '<span class="fct-method-name">' + this.$t('Cards') + '</span>';
+        html += '</div>';
+        html += '<div class="fct-method">';
+        html += '<span class="fct-method-name">' + this.$t('Bank Transfer') + '</span>';
+        html += '</div>';
+        html += '<div class="fct-method">';
+        html += '<span class="fct-method-name">' + this.$t('USSD') + '</span>';
+        html += '</div>';
+        html += '<div class="fct-method">';
+        html += '<span class="fct-method-name">' + this.$t('QR Code') + '</span>';
         html += '</div>';
         html += '</div>';
+        
         html += '</div>';
         
         // Add CSS styles
         html += `<style>
-            .paystack-payment-info {
-                padding: 16px;
-                border: 1px solid #e1e5e9;
+            .fct-paystack-info {
+                padding: 20px;
+                border: 1px solid #e0e0e0;
                 border-radius: 8px;
-                background: #fff;
+                background: #f9f9f9;
+                margin-bottom: 20px;
+            }
+            
+            .fct-paystack-header {
+                text-align: center;
                 margin-bottom: 16px;
             }
-            .paystack-payment-container {
-                text-align: center;
+            
+            .fct-paystack-heading {
+                margin: 0 0 4px 0;
+                font-size: 18px;
+                font-weight: 600;
+                color: #0c7fdc;
             }
-            .paystack-logo {
-                margin-bottom: 12px;
-            }
-            .paystack-logo img {
-                max-height: 40px;
-                max-width: 150px;
-            }
-            .paystack-description {
-                margin: 0 0 16px 0;
-                font-size: 14px;
-                color: #333;
-                font-weight: 500;
-            }
-            .paystack-payment-methods {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                justify-content: center;
-            }
-            .payment-badge {
-                display: inline-block;
-                padding: 4px 8px;
-                background: #0c7fdc;
-                color: white;
+            
+            .fct-paystack-subheading {
+                margin: 0;
                 font-size: 12px;
-                border-radius: 4px;
-                font-weight: 500;
+                color: #999;
+                font-weight: 400;
             }
-            .paystack-payment-error {
-                padding: 16px;
-                border: 1px solid #dc3545;
-                border-radius: 8px;
-                background: #f8d7da;
-                margin-bottom: 16px;
-                color: #721c24;
-                text-align: center;
+            
+            .fct-paystack-methods {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+                gap: 10px;
+            }
+            
+            .fct-method {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 10px;
+                background: white;
+                border: 1px solid #ddd;
+                border-radius: 6px;
+                transition: all 0.2s ease;
+            }
+            
+            .fct-method:hover {
+                border-color: #0c7fdc;
+                background: #f0f7ff;
+            }
+            
+            .fct-method-name {
+                font-size: 12px;
+                font-weight: 500;
+                color: #333;
+            }
+            
+            @media (max-width: 768px) {
+                .fct-paystack-info {
+                    padding: 16px;
+                }
+                
+                .fct-paystack-heading {
+                    font-size: 16px;
+                }
+                
+                .fct-paystack-methods {
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 8px;
+                }
+                
+                .fct-method {
+                    padding: 8px;
+                }
             }
         </style>`;
 
-        return html;
+        let container = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
+        container.innerHTML = html;
     }
 
     loadPaystackScript() {
@@ -93,63 +166,15 @@ class PaystackCheckout {
             }
 
             const script = document.createElement('script');
-            script.src = 'https://js.paystack.co/v2/inline.js';
+            script.src = this.#cdnUrl;
             script.onload = () => {
                 resolve();
             };
             script.onerror = () => {
                 reject(new Error('Failed to load Paystack script'));
             };
+
             document.head.appendChild(script);
-        });
-    }
-
-    init() {
-        this.paymentLoader.enableCheckoutButton(this.translate(this.submitButton.text));
-        const that = this;        
-        const paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
-        if (paystackContainer) {
-            paystackContainer.innerHTML = '';
-        }
-
-        // Hide payment methods
-        const paymentMethods = this.form.querySelector('.fluent_cart_payment_methods');
-        if (paymentMethods) {
-            paymentMethods.style.display = 'none';
-        }
-
-        let intent = this.data?.intent;
-        const publicKey = this.data?.payment_args?.public_key;
-
-        // Handle both one-time payments and subscriptions
-        // if (this.intent === 'subscription') {
-        //     this.subscriptionPaymentHandler(that, this.data, orderData, paystackContainer);
-        // } else {
-        //     this.onetimePaymentHandler(that, this.data, orderData, paystackContainer);
-        // }
-
-        window.addEventListener("fluent_cart_payment_next_action_paystack", async(e) => {
-                // that.paymentLoader?.changeLoaderStatus('processing');
-                // const loaderElement = document.querySelector('.fc-loader');
-                // loaderElement?.classList?.add('active');
-
-            const remoteResponse = e.detail?.response;
-           
-            const access_code = remoteResponse?.data?.paystack_data?.access_code;
-            const authorizationUrl = remoteResponse?.data?.paystack_data?.authorization_url;
-            const intent = remoteResponse?.data?.intent;
-
-             if (access_code && authorizationUrl) {
-                // remove or hide loader
-                this.paymentLoader.hideLoader();
-                // load paystack popup
-                if (intent === 'onetime') {
-                    this.onetimePaymentHandler(access_code, authorizationUrl);
-                } else if (intent === 'subscription') {
-                    this.paystackSubscriptionPayment(access_code, authorizationUrl);
-                }
-             }
-               
         });
     }
 
