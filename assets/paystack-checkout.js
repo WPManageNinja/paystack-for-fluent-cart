@@ -164,13 +164,181 @@ class PaystackCheckout {
 
         try {
             const popup = new PaystackPop();
-            popup.resumeTransaction(access_code);
+            
+            // Setup event listeners for Paystack transaction lifecycle
+            popup.resumeTransaction(access_code, {
+                onSuccess: (transaction) => {
+                    this.handlePaymentSuccess(transaction);
+                },
+                onCancel: () => {
+                    this.handlePaymentCancel();
+                },
+                onError: (error) => {
+                    this.handlePaystackError(error);
+                }
+            });
             
         } catch (error) {
             console.error('Error resuming Paystack popup:', error);
             this.handlePaystackError(error);
         }
+    }
 
+    handlePaymentSuccess(transaction) {
+        // call confirm ajax call to backend
+        const params = new URLSearchParams({
+            action: 'fluent_cart_confirm_paystack_payment',
+            reference: transaction.reference || transaction.trxref,
+            trx_id: transaction.trans || transaction.transaction,
+        });
+
+        const that = this;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', window.fluentcart_checkout_vars.ajaxurl, true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if (res?.redirect_url) {
+                        that.paymentLoader.triggerPaymentCompleteEvent(res);
+                        that.paymentLoader?.changeLoaderStatus('redirecting');
+                        window.location.href = res.redirect_url;
+                    } else {
+                        that.handlePaystackError(new Error(res?.message || 'Payment confirmation failed'));
+                    }
+                } catch (error) {
+                    console.error('An error occurred while parsing the response:', error?.message);
+                    that.handlePaystackError(error);
+                }
+            } else {
+                console.error('Network response was not ok');
+                that.handlePaystackError(new Error('Network error: ' + xhr.status));
+            }
+        };
+
+        xhr.onerror = function () {
+            try {
+                const err = JSON.parse(xhr.responseText);
+                that.handlePaystackError(err);
+            } catch (e) {
+                console.error('An error occurred:', e);
+                that.handlePaystackError(e);
+            }
+        };
+
+        xhr.send(params.toString());
+    }
+
+    handlePaymentCancel() {
+        this.paymentLoader.hideLoader();
+        this.paymentLoader.enableCheckoutButton(this.submitButton.text);    
+    }
+
+    handlePaystackError(err) {
+        let errorMessage = this.$t('An unknown error occurred');
+
+        if (err?.message) {
+            try {
+                const jsonMatch = err.message.match(/{.*}/s);
+                if (jsonMatch) {
+                    errorMessage = JSON.parse(jsonMatch[0]).message || errorMessage;
+                } else {
+                    errorMessage = err.message;
+                }
+            } catch {
+                errorMessage = err.message || errorMessage;
+            }
+        }
+
+        // put error message in innerhtml of paystack container
+        let paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
+        if (paystackContainer) {
+            paystackContainer.innerHTML = '<div id="fct_loading_payment_processor" style="color:red; display:none; font-size:14px; padding:10px;">' + errorMessage + '</div>';
+            paystackContainer.style.display = 'block';
+        }
+
+        this.paymentLoader.hideLoader();
+        this.paymentLoader.enableCheckoutButton(this.submitButton.text);
+    }
+
+    async paystackSubscriptionPayment(access_code, authorizationUrl) {
+        try {
+            await this.loadPaystackScript();
+        } catch (error) {
+            console.error('Paystack script failed to load:', error);
+            this.handlePaystackError(error);
+            return;
+        }
+
+        try {
+            const popup = new PaystackPop();
+            
+            // Setup event listeners for Paystack subscription payment
+            popup.resumeTransaction(access_code, {
+                onSuccess: (transaction) => {
+                    this.handleSubscriptionSuccess(transaction);
+                },
+                onCancel: () => {
+                    this.handlePaymentCancel();
+                },
+                onError: (error) => {
+                    this.handlePaystackError(error);
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error resuming Paystack subscription popup:', error);
+            this.handlePaystackError(error);
+        }
+    }
+
+    handleSubscriptionSuccess(transaction) {
+        // call confirm ajax call to backend for subscription
+        const params = new URLSearchParams({
+            action: 'fluent_cart_confirm_paystack_payment',
+            reference: transaction.reference || transaction.trxref,
+            trx_hash: this.data?.transaction_hash || ''
+        });
+
+        const that = this;
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', window.fluentcart_checkout_vars.ajaxurl, true);
+        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                try {
+                    const res = JSON.parse(xhr.responseText);
+                    if (res?.redirect_url) {
+                        that.paymentLoader.triggerPaymentCompleteEvent(res);
+                        that.paymentLoader?.changeLoaderStatus('redirecting');
+                        window.location.href = res.redirect_url;
+                    } else {
+                        that.handlePaystackError(new Error(res?.message || 'Subscription confirmation failed'));
+                    }
+                } catch (error) {
+                    console.error('An error occurred while parsing the response:', error?.message);
+                    that.handlePaystackError(error);
+                }
+            } else {
+                console.error('Network response was not ok');
+                that.handlePaystackError(new Error('Network error: ' + xhr.status));
+            }
+        };
+
+        xhr.onerror = function () {
+            try {
+                const err = JSON.parse(xhr.responseText);
+                that.handlePaystackError(err);
+            } catch (e) {
+                console.error('An error occurred:', e);
+                that.handlePaystackError(e);
+            }
+        };
+
+        xhr.send(params.toString());
     }
 
     handlePaystackError(err) {

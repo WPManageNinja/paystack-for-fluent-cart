@@ -23,7 +23,7 @@ class PaystackProcessor
             'amount'    => $transaction->total, // Amount in kobo/cents
             'email'     => $fcCustomer->email,
             'currency'  => strtoupper($transaction->currency),
-            'reference' => $transaction->uuid . time(),
+            'reference' => $transaction->uuid . '_time_' . time(),
             'callback_url' => Arr::get($paymentArgs, 'success_url'),
             'metadata'  => [
                 'order_id'         => $order->id,
