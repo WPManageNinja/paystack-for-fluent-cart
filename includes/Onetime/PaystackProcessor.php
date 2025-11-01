@@ -4,7 +4,6 @@ namespace PaystackFluentCart\Onetime;
 
 use FluentCart\App\Services\Payments\PaymentInstance;
 use PaystackFluentCart\API\PaystackAPI;
-use PaystackSettings\Settings;
 use FluentCart\Framework\Support\Arr;
 
 class PaystackProcessor
@@ -20,11 +19,10 @@ class PaystackProcessor
 
         // Prepare payment data for Paystack
         $paymentData = [
-            'amount'    => $transaction->total, // Amount in kobo/cents
+            'amount'    => (int)($transaction->total), // Amount in kobo
             'email'     => $fcCustomer->email,
             'currency'  => strtoupper($transaction->currency),
-            'reference' => $transaction->uuid . '_time_' . time(),
-            'callback_url' => Arr::get($paymentArgs, 'success_url'),
+            'reference' => $transaction->uuid . '_' . time(),
             'metadata'  => [
                 'order_id'         => $order->id,
                 'order_hash'       => $order->uuid,
@@ -33,23 +31,14 @@ class PaystackProcessor
             ]
         ];
 
+
         // Apply filters for customization
-        $paymentData = apply_filters('paystack_fc/payment_args', $paymentData, [
+        $paymentData = apply_filters('fluent_cart/paystack/onetime_payment_args', $paymentData, [
             'order'       => $order,
             'transaction' => $transaction
         ]);
 
-
-        // before initialize check if the transaction is already initialized with the same reference
-
-        $alreadyInitialized = false; // TODO: Implement check logic
-        $paystackInitializedData = PaystackAPI::getPaystackObject('transaction/verify/' . $transaction->uuid . 'sdf');
-
-
-        if (!is_wp_error($paystackInitializedData) && isset($paystackInitializedData['data']) && $paystackInitializedData['data']['status'] === 'success') {
-            // get the existing initialized transaction data
-        }
-
+        // Initialize Paystack transaction
         $paystackTransaction = PaystackAPI::createPaystackObject('transaction/initialize', $paymentData);
 
         if (is_wp_error($paystackTransaction)) {
@@ -63,67 +52,17 @@ class PaystackProcessor
                 ['response' => $paystackTransaction]
             );
         }
-        
 
-        // TODO: Initialize Paystack transaction via API
-        // For now, return structure for popup initialization
-        
         return [
             'status'       => 'success',
             'nextAction'   => 'paystack',
             'actionName'   => 'custom',
             'message'      => __('Opening Paystack payment popup...', 'paystack-for-fluent-cart'),
             'data'         => [
-                'paystack_data'   => $paystackTransaction['data'],
-                'intent'          => 'onetime'
+                'paystack_data'    => $paystackTransaction['data'],
+                'intent'           => 'onetime',
+                'transaction_hash' => $transaction->uuid,
             ]
-        ];
-    }
-
-    /**
-     * Handle subscription payment
-     */
-    public function handleSubscription(PaymentInstance $paymentInstance, $paymentArgs = [])
-    {
-        $order = $paymentInstance->order;
-        $transaction = $paymentInstance->transaction;
-        $subscription = $paymentInstance->subscription;
-        $fcCustomer = $paymentInstance->order->customer;
-
-        // Prepare payment data for Paystack subscription
-        $paymentData = [
-            'amount'    => $transaction->total,
-            'email'     => $fcCustomer->email,
-            'currency'  => strtoupper($transaction->currency),
-            'reference' => $transaction->uuid,
-            'callback_url' => Arr::get($paymentArgs, 'success_url'),
-            'metadata'  => [
-                'order_id'           => $order->id,
-                'order_hash'         => $order->uuid,
-                'transaction_hash'   => $transaction->uuid,
-                'subscription_hash'  => $subscription->uuid,
-                'customer_name'      => $fcCustomer->first_name . ' ' . $fcCustomer->last_name,
-            ]
-        ];
-
-        // Apply filters for customization
-        $paymentData = apply_filters('paystack_fc/subscription_payment_args', $paymentData, [
-            'order'        => $order,
-            'transaction'  => $transaction,
-            'subscription' => $subscription
-        ]);
-
-        // TODO: Initialize Paystack transaction with subscription plan
-
-        return [
-            'status'       => 'success',
-            'nextAction'   => 'paystack',
-            'actionName'   => 'popup',
-            'message'      => __('Opening Paystack payment popup...', 'paystack-for-fluent-cart'),
-            'payment_args' => array_merge($paymentArgs, [
-                'paystack_data' => $paymentData,
-                'transaction_ref' => $transaction->uuid
-            ])
         ];
     }
 

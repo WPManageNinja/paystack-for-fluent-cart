@@ -8,9 +8,9 @@ use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
 use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
-use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
 use PaystackFluentCart\API\PaystackAPI;
+use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
 
 class PaystackConfirmations
 {
@@ -18,6 +18,7 @@ class PaystackConfirmations
     {
         add_action('wp_ajax_nopriv_fluent_cart_confirm_paystack_payment', [$this, 'confirmPaystackPayment']);
         add_action('wp_ajax_fluent_cart_confirm_paystack_payment', [$this, 'confirmPaystackPayment']);
+        add_action('fluent_cart/before_render_redirect_page', [$this, 'maybeConfirmPaymentOnReturn']);
     }
 
     /**
@@ -32,7 +33,6 @@ class PaystackConfirmations
             ], 400);
         }
 
-        $reference = sanitize_text_field($_REQUEST['reference']);
         $paystackTransactionId = sanitize_text_field($_REQUEST['trx_id'] ?? '');
         
         // get the transaction from paystack using the reference
@@ -49,35 +49,29 @@ class PaystackConfirmations
         $transactionHash = Arr::get($transactionMeta, 'transaction_hash', '');
 
         // Find the transaction by UUID
-        $transaction = null;
+        $transactionModel = null;
 
         if ($transactionHash) {
-            $transaction = OrderTransaction::query()
+            $transactionModel = OrderTransaction::query()
                 ->where('uuid', $transactionHash)
                 ->where('payment_method', 'paystack')
                 ->first();
         }
 
-        if (!$transaction) {
-            $transaction = OrderTransaction::query()
-                ->where('reference', $reference)
-                ->where('payment_method', 'paystack')
-                ->first();
-        }
-
-        if (!$transaction) {
+        if (!$transactionModel) {
             wp_send_json([
                 'message' => 'Transaction not found for the provided reference.',
                 'status' => 'failed'
             ], 404);
         }
 
+  
         // Check if already processed
-        if ($transaction->status === Status::TRANSACTION_SUCCEEDED) {
+        if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED) {
             wp_send_json([
-                'redirect_url' => $transaction->getReceiptPageUrl(),
+                'redirect_url' => $transactionModel->getReceiptPageUrl(),
                 'order' => [
-                    'uuid' => $transaction->order->uuid,
+                    'uuid' => $transactionModel->order->uuid,
                 ],
                 'message' => __('Payment already confirmed. Redirecting...!', 'paystack-for-fluent-cart'),
                 'status' => 'success'
@@ -86,55 +80,79 @@ class PaystackConfirmations
 
         $data = Arr::get($paystackTransaction, 'data');
 
-        $this->confirmPaymentSuccessByCharge($transaction, [
+
+        $paystackPlan = Arr::get($transactionMeta, 'paystack_plan', '');
+        $subscriptionHash = Arr::get($transactionMeta, 'subscription_hash', '');
+        $paystackCustomer = Arr::get($data, 'customer.customer_code', []);
+        $paystackCustomerAuthorization = Arr::get($data, 'authorization.authorization_code', []);
+
+        $billingInfo = [
+            'type' => Arr::get($data, 'authorization.payment_type', 'card'),
+            'last4' =>  Arr::get($data, 'authorization.last4'),
+            'brand' => Arr::get($data, 'authorization.brand'),
+            'payment_method_id' => Arr::get($data, 'authorization.authorization_code'),
+            'payment_method_type' => Arr::get($data, 'authorization.channel'),
+            'exp_month' => Arr::get($data, 'authorization.exp_month'),
+            'exp_year' => Arr::get($data, 'authorization.exp_year')
+        ];
+
+        if ($paystackPlan && $subscriptionHash) {
+            $subscriptionModel = Subscription::query()
+                ->where('uuid', $subscriptionHash)
+                ->first();
+            
+            $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
+                'customer_code' => $paystackCustomer,
+                'authorization_code' => $paystackCustomerAuthorization,
+                'plan_code' => $paystackPlan,
+                'billing_info' => $billingInfo
+            ]);
+        }
+        
+
+        $this->confirmPaymentSuccessByCharge($transactionModel, [
             'vendor_charge_id' => $paystackTransactionId,
-            'transaction' => $data,
+            'charge' => $data,
+            'subscription_data' => $updatedSubData ?? [],
+            'billing_info' => $billingInfo
         ]);
 
         wp_send_json([
-            'redirect_url' => $transaction->getReceiptPageUrl(),
+            'redirect_url' => $transactionModel->getReceiptPageUrl(),
             'order' => [
-                'uuid' => $transaction->order->uuid,
+                'uuid' => $transactionModel->order->uuid,
             ],
             'message' => __('Payment confirmed successfully. Redirecting...!', 'paystack-for-fluent-cart'),
             'status' => 'success'
         ], 200);
     }
 
+    public function maybeConfirmPaymentOnReturn($data){
+        return;
+    }
+
     /**
      * Confirm payment success and update transaction
      */
-    public function confirmPaymentSuccessByCharge(OrderTransaction $transaction, $args = [])
+    public function confirmPaymentSuccessByCharge(OrderTransaction $transactionModel, $args = [])
     {
-        $reference = Arr::get($args, 'vendor_charge_id');
+        $vendorChargeId = Arr::get($args, 'vendor_charge_id');
         $transactionData = Arr::get($args, 'transaction');
+        $subscriptionData = Arr::get($args, 'subscription_data', []);
+        $billingInfo = Arr::get($args, 'billing_info', []);
 
-        if ($transaction->status === Status::TRANSACTION_SUCCEEDED) {
+        if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED) {
             return;
         }
 
-        $order = Order::query()->where('id', $transaction->order_id)->first();
+        $order = Order::query()->where('id', $transactionModel->order_id)->first();
 
         if (!$order) {
             return;
         }
 
-        // Extract billing information from Paystack authorization
-        $authorization = Arr::get($transactionData, 'authorization', []);
-        $billingInfo = [
-            'type' => Arr::get($authorization, 'payment_type', 'card'),
-            'last4' => Arr::get($authorization, 'last4'),
-            'brand' => Arr::get($authorization, 'brand'),
-            'payment_method_id' => Arr::get($authorization, 'authorization_code'),
-            'payment_method_type' => Arr::get($authorization, 'channel'),
-            'exp_month' => Arr::get($authorization, 'exp_month'),
-            'exp_year' => Arr::get($authorization, 'exp_year')
-        ];
-
         $amount = Arr::get($transactionData, 'amount', 0); // Paystack returns amount in kobo/cents
         $currency = Arr::get($transactionData, 'currency');
-
-        $meta = $this->getTransactionMeta($transactionData, $order);
 
         // Update transaction
         $transactionUpdateData = array_filter([
@@ -146,99 +164,31 @@ class PaystackConfirmations
             'card_last_4' => Arr::get($billingInfo, 'last4', ''),
             'card_brand' => Arr::get($billingInfo, 'brand', ''),
             'payment_method_type' => Arr::get($billingInfo, 'payment_method_type', ''),
-            'vendor_charge_id' => $reference,
-            'reference' => $reference,
-            'meta' => array_merge($transaction->meta ?? [], $meta)
+            'vendor_charge_id' => $vendorChargeId,
+            'meta' => array_merge($transaction->meta ?? [], $billingInfo)
         ]);
 
-        $transaction->fill($transactionUpdateData);
-        $transaction->save();
+        $transactionModel->fill($transactionUpdateData);
+        $transactionModel->save();
 
-        fluent_cart_add_log(__('Paystack Payment Confirmation', 'paystack-for-fluent-cart'), __('Payment confirmation received from Paystack. Reference:', 'paystack-for-fluent-cart') . ' ' . $reference, 'info', [
+        fluent_cart_add_log(__('Paystack Payment Confirmation', 'paystack-for-fluent-cart'), __('Payment confirmation received from Paystack. Transaction ID:', 'paystack-for-fluent-cart') . ' ' . $vendorChargeId, 'info', [
             'module_name' => 'order',
             'module_id' => $order->id,
         ]);
 
-        // Handle renewal orders with subscriptions
-        if ($order->type === Status::ORDER_TYPE_RENEWAL) {
-            $parentOrderId = $transaction->order->parent_id;
-            if (!$parentOrderId) {
-                return $order;
+        if ($order->type == status::ORDER_TYPE_RENEWAL) {
+            $subscriptionModel = Subscription::query()->where('parent_order_id', $transactionModel->order_id)->first();
+
+            if (!$subscriptionModel || !$subscriptionData) {
+                return $order; // No subscription found for this renewal order. Something is wrong.
             }
-
-            $subscription = Subscription::query()->where('parent_order_id', $parentOrderId)->first();
-
-            if (!$subscription) {
-                return $order; // No subscription found for this renewal order.
-            }
-
-            $response = PaystackAPI::getPaystackObject('subscription/' . $subscription->vendor_subscription_id);
-
-            $subscriptionArgs = [
-                'status' => Status::SUBSCRIPTION_ACTIVE,
-                'canceled_at' => null,
-                'current_payment_method' => 'paystack'
-            ];
-
-            if (!is_wp_error($response)) {
-                $nextBillingDate = Arr::get($response, 'data.next_payment_date') ?? null;
-                if ($nextBillingDate) {
-                    $subscriptionArgs['next_billing_date'] = DateTime::anyTimeToGmt($nextBillingDate)->format('Y-m-d H:i:s');
-                }
-            }
-
-            SubscriptionService::recordManualRenewal($subscription, $transaction, [
-                'billing_info' => $billingInfo,
-                'subscription_args' => $subscriptionArgs
+            return SubscriptionService::recordManualRenewal($subscriptionModel, $transactionModel, [
+                'billing_info'      => $billingInfo,
+                'subscription_args' => $subscriptionData
             ]);
-
-        } else {
-            $subscription = Subscription::query()->where('parent_order_id', $order->id)->first();
-            
-            if ($subscription) {
-                // Store payment method info and subscription code if available
-                $subscription->updateMeta('active_payment_method', $billingInfo);
-                $subscriptionCode = Arr::get($transactionData, 'customer.customer_code');
-                if ($subscriptionCode) {
-                    $subscription->updateMeta('customer_code', $subscriptionCode);
-                }
-            }
-
-            // Sync order status
-            (new StatusHelper($order))->syncOrderStatuses($transaction);
         }
 
-        return $order;
-    }
-
-    /**
-     * Extract transaction metadata from Paystack response
-     */
-    private function getTransactionMeta($transactionData, Order $order)
-    {
-        $meta = [
-            'paystack_reference' => Arr::get($transactionData, 'reference'),
-            'paystack_transaction_id' => Arr::get($transactionData, 'id'),
-            'payment_channel' => Arr::get($transactionData, 'channel'),
-            'ip_address' => Arr::get($transactionData, 'ip_address'),
-            'fees' => Arr::get($transactionData, 'fees', 0) / 100, // Convert from kobo
-        ];
-
-        $customer = Arr::get($transactionData, 'customer', []);
-        if ($customer) {
-            $meta['customer_email'] = Arr::get($customer, 'email');
-            $meta['customer_code'] = Arr::get($customer, 'customer_code');
-        }
-
-        $authorization = Arr::get($transactionData, 'authorization', []);
-        if ($authorization) {
-            $meta['authorization_code'] = Arr::get($authorization, 'authorization_code');
-            $meta['bin'] = Arr::get($authorization, 'bin');
-            $meta['bank'] = Arr::get($authorization, 'bank');
-            $meta['country_code'] = Arr::get($authorization, 'country_code');
-        }
-
-        return $meta;
+        return (new StatusHelper($order))->syncOrderStatuses($transactionModel);
     }
 }
 

@@ -66,7 +66,7 @@ class PaystackGateway extends AbstractPaymentGateway
         ];
 
         if ($paymentInstance->subscription) {
-            return (new Onetime\PaystackProcessor())->handleSubscription($paymentInstance, $paymentArgs);
+            return (new Subscriptions\PaystackSubscriptions())->handleSubscription($paymentInstance, $paymentArgs);
         }
 
         return (new Onetime\PaystackProcessor())->handleSinglePayment($paymentInstance, $paymentArgs);
