@@ -11,6 +11,7 @@ use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
 use FluentCart\Framework\Support\Arr;
 use PaystackFluentCart\API\PaystackAPI;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
+use PaystackFluentCart\Refund\PaystackRefund;
 
 class PaystackConfirmations
 {
@@ -18,7 +19,18 @@ class PaystackConfirmations
     {
         add_action('wp_ajax_nopriv_fluent_cart_confirm_paystack_payment', [$this, 'confirmPaystackPayment']);
         add_action('wp_ajax_fluent_cart_confirm_paystack_payment', [$this, 'confirmPaystackPayment']);
-        add_action('fluent_cart/before_render_redirect_page', [$this, 'maybeConfirmPaymentOnReturn']);
+
+        // not needed for onsite payment methods,  but useful for redirect payment
+        /*
+         * $data params contains
+         *  - order_hash (order uuid)
+         *  - trx_hash (transaction uuid)
+         *  - method (gateway name)
+         *  - is_receipt (yes/no), if 'yes' if we are on receipt page, not on thank you page (confirm only in-time of thank you page render)
+         *
+         * */
+//        add_action('fluent_cart/before_render_redirect_page', [$this, 'maybeConfirmPaymentOnReturn']);
+
     }
 
     /**
@@ -100,12 +112,13 @@ class PaystackConfirmations
             $subscriptionModel = Subscription::query()
                 ->where('uuid', $subscriptionHash)
                 ->first();
-            
+
             $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
                 'customer_code' => $paystackCustomer,
                 'authorization_code' => $paystackCustomerAuthorization,
                 'plan_code' => $paystackPlan,
-                'billing_info' => $billingInfo
+                'billing_info' => $billingInfo,
+                'is_first_payment_only_for_authorization' => Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes'
             ]);
         }
         
@@ -137,7 +150,7 @@ class PaystackConfirmations
     public function confirmPaymentSuccessByCharge(OrderTransaction $transactionModel, $args = [])
     {
         $vendorChargeId = Arr::get($args, 'vendor_charge_id');
-        $transactionData = Arr::get($args, 'transaction');
+        $transactionData = Arr::get($args, 'charge');
         $subscriptionData = Arr::get($args, 'subscription_data', []);
         $billingInfo = Arr::get($args, 'billing_info', []);
 
@@ -153,6 +166,7 @@ class PaystackConfirmations
 
         $amount = Arr::get($transactionData, 'amount', 0); // Paystack returns amount in kobo/cents
         $currency = Arr::get($transactionData, 'currency');
+        $transactionMeta = Arr::get($args, 'charge.metadata', []);
 
         // Update transaction
         $transactionUpdateData = array_filter([
@@ -175,6 +189,19 @@ class PaystackConfirmations
             'module_name' => 'order',
             'module_id' => $order->id,
         ]);
+
+        // refund the amount if it was just for authorization
+        if (Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') == 'yes') {
+            // refund the amount as it was just for authorization
+            $response = (new PaystackRefund())->refundMinimumAuthorizationAmount($transactionModel);
+
+            if (is_wp_error($response)) {
+                fluent_cart_add_log('Refund failed of authorization amount', $response->get_error_message(), 'error', [
+                    'module_name' => 'order',
+                    'module_id'   => $transactionModel->order_id,
+                ]);
+            }
+        }
 
         if ($order->type == status::ORDER_TYPE_RENEWAL) {
             $subscriptionModel = Subscription::query()->where('parent_order_id', $transactionModel->order_id)->first();

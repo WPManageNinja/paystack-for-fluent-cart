@@ -19,7 +19,7 @@ class PaystackProcessor
 
         // Prepare payment data for Paystack
         $paymentData = [
-            'amount'    => (int)($transaction->total), // Amount in kobo
+            'amount'    => (int)($transaction->total), // Amount in lowest currency unit (kobo for NGN), cents for USD e.t.c
             'email'     => $fcCustomer->email,
             'currency'  => strtoupper($transaction->currency),
             'reference' => $transaction->uuid . '_' . time(),

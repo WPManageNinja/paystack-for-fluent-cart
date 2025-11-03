@@ -30,7 +30,6 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'vendor_plan_id' => Arr::get($plan, 'data.plan_code'),
         ]);
 
-        // firtPayment of the subscription, as paystack requires The customer must have already done a transaction for subscription to be created
         $firstPayment = [
             'email'     => $fcCustomer->email,
             'amount'    => (int)$transaction->total,
@@ -42,8 +41,16 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
                 'transaction_hash' => $transaction->uuid,
                 'subscription_hash'=> $subscription->uuid,
                 'customer_name'    => $fcCustomer->first_name . ' ' . $fcCustomer->last_name,
+                'amount_is_for_authorization_only' => 'no'
             ]
         ];
+
+        // firstPayment of the subscription, as paystack requires The customer must have already done a transaction for authorization
+        // source: https://paystack.com/docs/payments/recurring-charges/
+        if ($firstPayment['amount'] <= 0) {
+            $firstPayment['amount'] = PaystackHelper::getMinimumAmountForAuthorization($transaction->currency);
+            $firstPayment['metadata']['amount_is_for_authorization_only'] = 'yes'; // we'll refund this amount later after confirmation
+        }
 
         
         // Apply filters for customization
@@ -170,14 +177,27 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             );
         }
 
-        // Fetch subscription from Paystack API
-        $response = PaystackAPI::getPaystackObject('subscription/' . $vendorSubscriptionId);
+        $paystackCustomerId = $subscriptionModel->vendor_customer_id;
+        $paystackPlanId = $subscriptionModel->vendor_plan_id;
 
-        if (is_wp_error($response)) {
-            return $response;
+        $paystackSubscription = PaystackAPI::getPaystackObject('subscription/' . $vendorSubscriptionId);
+        // get all transaction for this customer, then match the transactions with vendor_plan_id with plan_code of transactions
+        $transactions = PaystackAPI::getPaystackObject('transaction', [
+            'customer' => $paystackCustomerId
+        ]);
+
+
+//        dsd([
+//            'paystack_subscription' => $paystackSubscription,
+//            'transactions' => $transactions
+//        ]);
+
+
+        if (is_wp_error($transactions)) {
+            return $transactions;
         }
 
-        $subscriptionData = Arr::get($response, 'data', []);
+        $subscriptionData = Arr::get($transactions, 'data', []);
         $status = Arr::get($subscriptionData, 'status');
         $nextBillingDate = Arr::get($subscriptionData, 'next_payment_date');
 
@@ -230,10 +250,11 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
         ];
 
         if ($startDate) {
-            $data['start_date'] = $startDate;
+            $data['start_date'] =  DateTime::anytimeToGmt($startDate)->format('Y-m-d H:i:s');
         }
 
         $payStackSubscription = PaystackAPI::createPaystackObject('subscription', $data);
+
 
         if (is_wp_error($payStackSubscription)) {
             // log the error message
@@ -258,10 +279,18 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
         $subscriptionModel->update($updateData);
 
         $subscriptionModel->updateMeta('active_payment_method', Arr::get($args, 'billingInfo', []));
+        $subscriptionModel->updateMeta('paystack_email_token', Arr::get($payStackSubscription, 'data.email_token'));
+
+        fluent_cart_add_log(__('Paystack Subscription Created', 'paystack-for-fluent-cart'), 'Subscription created on Paystack. Code: ' . Arr::get($payStackSubscription, 'data.subscription_code'), 'info', [
+            'module_name' => 'order',
+            'module_id'   => $order->id
+        ]);
 
         if ($oldStatus != $subscriptionModel->status && (Status::SUBSCRIPTION_ACTIVE === $subscriptionModel->status || Status::SUBSCRIPTION_TRIALING === $subscriptionModel->status)) {
             (new SubscriptionActivated($subscriptionModel, $order, $order->customer))->dispatch();
         }
+
+
 
         return $updateData;
     }
@@ -281,12 +310,12 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
         // Get subscription code and token for cancellation
         $subscriptionCode = $vendorSubscriptionId;
-        $token = $subscriptionModel->getMeta('paystack_authorization_code');
+        $token = $subscriptionModel->getMeta('paystack_email_token');
 
         if (!$token) {
             return new \WP_Error(
-                'missing_authorization',
-                __('Missing authorization token for subscription cancellation.', 'paystack-for-fluent-cart')
+                'missing_token',
+                __('Missing email token for subscription cancellation.', 'paystack-for-fluent-cart')
             );
         }
 
@@ -297,10 +326,15 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
         ]);
 
         if (is_wp_error($response)) {
+            fluent_cart_add_log('Paystack Subscription Cancellation Failed', $response->get_error_message(), 'error', [
+                'module_name' => 'subscription',
+                'module_id'   => $subscriptionModel->id,
+            ]);
             return $response;
         }
 
-        if (!Arr::get($response, 'status')) {
+
+        if (Arr::get($response, 'status') != true) {
             return new \WP_Error(
                 'cancellation_failed',
                 Arr::get($response, 'message', __('Failed to cancel subscription on Paystack.', 'paystack-for-fluent-cart'))
@@ -310,7 +344,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
         // Update subscription status
         $subscriptionModel->update([
             'status'     => Status::SUBSCRIPTION_CANCELED,
-            'canceled_at' => current_time('mysql')
+            'canceled_at' => DateTime::gmtNow()->format('Y-m-d H:i:s')
         ]);
 
         fluent_cart_add_log(
@@ -325,7 +359,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
         return [
             'status'      => Status::SUBSCRIPTION_CANCELED,
-            'canceled_at' => current_time('mysql')
+            'canceled_at' => DateTime::gmtNow()->format('Y-m-d H:i:s')
         ];
     }
 

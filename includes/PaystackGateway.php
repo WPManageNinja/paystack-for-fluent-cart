@@ -4,10 +4,13 @@ namespace PaystackFluentCart;
 
 use FluentCart\Api\CurrencySettings;
 use FluentCart\App\Helpers\Helper;
-use FluentCart\App\Models\OrderTransaction;
+use FluentCart\App\Helpers\Status;
 use FluentCart\Framework\Support\Arr;
 use FluentCart\App\Services\Payments\PaymentInstance;
 use FluentCart\App\Modules\PaymentMethods\Core\AbstractPaymentGateway;
+use PaystackFluentCart\Settings\PaystackSettingsBase;
+use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
+use PaystackFluentCart\Refund\PaystackRefund;
 
 class PaystackGateway extends AbstractPaymentGateway
 {
@@ -23,8 +26,8 @@ class PaystackGateway extends AbstractPaymentGateway
     public function __construct()
     {
         parent::__construct(
-            new Settings\PaystackSettingsBase(), 
-            new Subscriptions\PaystackSubscriptions()
+            new PaystackSettingsBase(),
+            new PaystackSubscriptions()
         );
     }
 
@@ -155,16 +158,10 @@ class PaystackGateway extends AbstractPaymentGateway
             return 'https://dashboard.paystack.com/#/transactions';
         }
 
-        $isLive = $this->settings->getMode() === 'live';
         $paymentId = $transaction->vendor_charge_id;
 
-        if ($transaction->status === 'refunded') {
-            $parentTransaction = OrderTransaction::query()
-                ->where('id', Arr::get($transaction->meta, 'parent_id'))
-                ->first();
-            if ($parentTransaction) {
-                $paymentId = $parentTransaction->vendor_charge_id;
-            }
+        if ($transaction->status === status::TRANSACTION_REFUNDED) {
+            return 'https://dashboard.paystack.com/#/refunds/' . $paymentId;
         }
 
         return 'https://dashboard.paystack.com/#/transactions/' . $paymentId;
@@ -185,15 +182,12 @@ class PaystackGateway extends AbstractPaymentGateway
         if (!$amount) {
             return new \WP_Error(
                 'paystack_refund_error',
-                __('Refund amount is required.', 'paystack-for-fluent-cart')
+                __('PaystackRefund amount is required.', 'paystack-for-fluent-cart')
             );
         }
 
-        // Your Paystack refund logic here
-        return new \WP_Error(
-            'paystack_refund_error',
-            __('Paystack refund implementation pending.', 'paystack-for-fluent-cart')
-        );
+        return (new PaystackRefund())->processRemoteRefund($transaction, $amount, $args);
+
     }
 
     public function fields(): array

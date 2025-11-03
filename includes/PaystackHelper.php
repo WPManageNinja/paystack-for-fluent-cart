@@ -50,4 +50,18 @@ class PaystackHelper
 
         return $statusMap[$status] ?? 'active';
     }
+
+    public static function getMinimumAmountForAuthorization($currency)
+    {
+        $currency = strtoupper($currency);
+        $minimumAmounts = [
+            'NGN' => 50.00,
+            'GHS' => 0.10,
+            'ZAR' => 1.00,
+            'KES' => 3.00,
+            'USD' => 2.00
+        ];
+
+        return $minimumAmounts[$currency] * 100 ?? 100;
+    }
 }
