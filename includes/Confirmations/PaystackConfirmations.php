@@ -38,9 +38,9 @@ class PaystackConfirmations
      */
     public function confirmPaystackPayment()
     {
-        if (!isset($_REQUEST['reference'])) {
+        if (!isset($_REQUEST['trx_id'])) {
             wp_send_json([
-                'message' => 'Payment reference is required to confirm the payment.',
+                'message' => 'Transaction ID is required to confirm the payment.',
                 'status' => 'failed'
             ], 400);
         }

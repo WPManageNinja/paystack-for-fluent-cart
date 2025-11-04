@@ -259,7 +259,6 @@ class PaystackCheckout {
                         that.handlePaystackError(new Error(res?.message || 'Payment confirmation failed'));
                     }
                 } catch (error) {
-                    console.error('An error occurred while parsing the response:', error?.message);
                     that.handlePaystackError(error);
                 }
             } else {
@@ -311,26 +310,6 @@ class PaystackCheckout {
 
         this.paymentLoader.hideLoader();
         this.paymentLoader.enableCheckoutButton(this.submitButton.text);
-    }
-
-    handlePaystackError(err) {
-        let errorMessage = this.$t('An unknown error occurred');
-
-        if (err?.message) {
-            try {
-                const jsonMatch = err.message.match(/{.*}/s);
-                if (jsonMatch) {
-                    errorMessage = JSON.parse(jsonMatch[0]).message || errorMessage;
-                } else {
-                    errorMessage = err.message;
-                }
-            } catch {
-                errorMessage = err.message || errorMessage;
-            }
-        }
-        
-        // TODO: handle error
-        console.error('Paystack error:', errorMessage);
     }
 
 }

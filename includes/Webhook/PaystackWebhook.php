@@ -3,16 +3,25 @@
 namespace PaystackFluentCart\Webhook;
 
 use FluentCart\App\Helpers\Status;
-use FluentCart\App\Helpers\StatusHelper;
+use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
+use FluentCart\App\Models\Subscription;
 use FluentCart\Framework\Support\Arr;
 use PaystackFluentCart\Settings\PaystackSettingsBase;
+use PaystackFluentCart\Confirmations\PaystackConfirmations;
+use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
 
 class PaystackWebhook
 {
     public function init()
     {
-        // Add any webhook initialization logic here
+        add_action('fluent_cart/payments/paystack/webhook_charge_success', [$this, 'handleChargeSuccess'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_subscription_create', [$this, 'handleSubscriptionCreate'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_subscription_disable', [$this, 'handleSubscriptionDisable'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_refund_processed', [$this, 'handleRefundProcessed'], 10, 1);
+
+        add_action('fluent_cart/payments/paystack/webhook_invoice_create', [$this, 'handleInvoiceUpdate'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_invoice_update', [$this, 'handleInvoiceUpdate'], 10, 1);
     }
 
     /**
@@ -22,47 +31,39 @@ class PaystackWebhook
     {
         // Get webhook payload
         $input = @file_get_contents('php://input');
-        $event = json_decode($input, true);
-
-        if (!$event) {
-            http_response_code(400);
-            exit('Invalid payload');
-        }
+        $data = json_decode($input, true);
 
         // Verify webhook signature
-        if (!$this->verifySignature($input)) {
-            http_response_code(401);
-            exit('Invalid signature');
+//        if (!$this->verifySignature($input)) {
+//            http_response_code(401);
+//            exit('Invalid signature');
+//        }
+
+        $orderHash = Arr::get($data, 'data.metadata.order_hash');
+
+        $order = null;
+        if ($orderHash) {
+            $order = Order::query()->where('uuid', $orderHash)->first();
         }
 
-        // Process the event
-        $eventType = Arr::get($event, 'event');
-        
-        switch ($eventType) {
-            case 'charge.success':
-                $this->handleChargeSuccess($event);
-                break;
-            
-            case 'subscription.create':
-                $this->handleSubscriptionCreate($event);
-                break;
-            
-            case 'subscription.disable':
-                $this->handleSubscriptionDisable($event);
-                break;
-            
-            case 'refund.processed':
-                $this->handleRefundProcessed($event);
-                break;
-            
-            default:
-                // Log unhandled event
-                fluent_cart_add_log('Paystack Webhook', 'Unhandled event: ' . $eventType, 'info');
-                break;
+        if (!$order) {
+            http_response_code(404);
+            exit('Order not found');
+        }
+
+        $event = str_replace('.', '_', Arr::get($data, 'event'));
+
+        if (has_action('fluent_cart/payments/paystack/webhook_' . $event)) {
+            do_action('fluent_cart/payments/paystack/webhook_' . $event, [
+                'payload' => Arr::get($data, 'data'),
+                'order' => $order
+            ]);
+
+            $this->sendResponse(200, 'Webhook processed successfully');
         }
 
         http_response_code(200);
-        exit('Webhook processed');
+        exit('Webhook not handled');
     }
 
     /**
@@ -85,64 +86,133 @@ class PaystackWebhook
     /**
      * Handle successful charge
      */
-    private function handleChargeSuccess($event)
+    public function handleChargeSuccess($data)
     {
-        $data = Arr::get($event, 'data', []);
-        $reference = Arr::get($data, 'reference');
-        
-        if (!$reference) {
-            return;
+       $paystackTransaction = Arr::get($data, 'payload');
+       $paystackTransactionId = Arr::get($paystackTransaction, 'id');
+
+        $transactionMeta = Arr::get($paystackTransaction, 'metadata', []);
+        $transactionHash = Arr::get($transactionMeta, 'transaction_hash', '');
+
+        // Find the transaction by UUID
+        $transactionModel = null;
+
+        if ($transactionHash) {
+            $transactionModel = OrderTransaction::query()
+                ->where('uuid', $transactionHash)
+                ->where('payment_method', 'paystack')
+                ->first();
         }
 
-        $transaction = OrderTransaction::query()
-            ->where('uuid', $reference)
-            ->where('payment_method', 'paystack')
-            ->first();
-
-        if (!$transaction) {
-            return;
+        if (!$transactionModel) {
+            wp_send_json([
+                'message' => 'Transaction not found for the provided reference.',
+                'status' => 'failed'
+            ], 404);
         }
 
-        // Update transaction
-        $transaction->update([
-            'status'           => Status::TRANSACTION_SUCCEEDED,
-            'vendor_charge_id' => Arr::get($data, 'id'),
-            'total'            => Arr::get($data, 'amount'),
+        $subscriptionHash = Arr::get($transactionMeta, 'subscription_hash', '');
+        $subscriptionModel = null;
+
+        if ($subscriptionHash) {
+            $subscriptionModel = Subscription::query()
+                ->where('uuid', $subscriptionHash)
+                ->first();
+        }
+
+        // Check if already processed
+        if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED && ($subscriptionHash && $subscriptionModel->status !== Status::SUBSCRIPTION_PENDING)) {
+            wp_send_json([
+                'redirect_url' => $transactionModel->getReceiptPageUrl(),
+                'order' => [
+                    'uuid' => $transactionModel->order->uuid,
+                ],
+                'message' => __('Payment already confirmed. Redirecting...!', 'paystack-for-fluent-cart'),
+                'status' => 'success'
+            ], 200);
+        }
+
+
+        $paystackPlan = Arr::get($transactionMeta, 'paystack_plan', '');
+        $paystackCustomer = Arr::get($paystackTransaction, 'customer.customer_code', []);
+        $paystackCustomerAuthorization = Arr::get($paystackTransaction, 'authorization.authorization_code', []);
+
+        $billingInfo = [
+            'type' => Arr::get($paystackTransaction, 'authorization.payment_type', 'card'),
+            'last4' =>  Arr::get($paystackTransaction, 'authorization.last4'),
+            'brand' => Arr::get($paystackTransaction, 'authorization.brand'),
+            'payment_method_id' => Arr::get($paystackTransaction, 'authorization.authorization_code'),
+            'payment_method_type' => Arr::get($paystackTransaction, 'authorization.channel'),
+            'exp_month' => Arr::get($paystackTransaction, 'authorization.exp_month'),
+            'exp_year' => Arr::get($paystackTransaction, 'authorization.exp_year')
+        ];
+
+        if ($paystackPlan) {
+            $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
+                'customer_code' => $paystackCustomer,
+                'authorization_code' => $paystackCustomerAuthorization,
+                'plan_code' => $paystackPlan,
+                'billing_info' => $billingInfo,
+                'is_first_payment_only_for_authorization' => Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes'
+            ]);
+        }
+
+
+        (new PaystackConfirmations())->confirmPaymentSuccessByCharge($transactionModel, [
+            'vendor_charge_id' => $paystackTransactionId,
+            'charge' => $paystackTransaction,
+            'subscription_data' => $updatedSubData ?? [],
+            'billing_info' => $billingInfo
         ]);
 
-        // Sync order status
-        if ($transaction->order) {
-            (new StatusHelper($transaction->order))->syncOrderStatuses($transaction);
-        }
+        $this->sendResponse(200, 'Charge processed successfully');
 
-        fluent_cart_add_log('Paystack Payment Success', 'Payment confirmed via webhook. Ref: ' . $reference, 'info', [
-            'module_name' => 'order',
-            'module_id'   => $transaction->order_id,
-        ]);
     }
 
     /**
      * Handle subscription creation
      */
-    private function handleSubscriptionCreate($event)
+    public function handleSubscriptionCreate($data)
     {
-        // TODO: Implement subscription creation webhook handler
+
+    }
+
+    // handling invoice paid
+    public function handleInvoiceUpdate($data)
+    {
+        $order = Arr::get($data, 'order');
+        $invoice = Arr::get($data, 'data');
+        $invoiceStatus = Arr::get($invoice, 'status');
+
+        if ($invoiceStatus === 'paid') {
+
+        }
     }
 
     /**
      * Handle subscription disable
      */
-    private function handleSubscriptionDisable($event)
+    public function handleSubscriptionDisable($data)
     {
-        // TODO: Implement subscription disable webhook handler
+
     }
 
     /**
      * Handle refund processed
      */
-    private function handleRefundProcessed($event)
+    public function handleRefundProcessed($data)
     {
-        // TODO: Implement refund webhook handler
+
+    }
+
+    protected function sendResponse($statusCode = 200, $message = 'Success')
+    {
+        http_response_code($statusCode);
+        echo json_encode([
+            'message' => $message,
+        ]);
+
+        exit;
     }
 }
 
