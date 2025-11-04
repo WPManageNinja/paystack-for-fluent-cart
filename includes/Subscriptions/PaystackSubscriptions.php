@@ -3,9 +3,12 @@
 namespace PaystackFluentCart\Subscriptions;
 
 use FluentCart\App\Helpers\Status;
+use FluentCart\App\Helpers\StatusHelper;
+use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
 use FluentCart\App\Modules\PaymentMethods\Core\AbstractSubscriptionModule;
 use FluentCart\App\Events\Subscription\SubscriptionActivated;
+use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
 use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
 use PaystackFluentCart\API\PaystackAPI;
@@ -45,8 +48,8 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             ]
         ];
 
-        // firstPayment of the subscription, as paystack requires The customer must have already done a transaction for authorization
-        // source: https://paystack.com/docs/payments/recurring-charges/
+        // firstPayment of the subscription, paystack requires The customer must have already done a transaction for authorization
+        // see details: https://paystack.com/docs/payments/recurring-charges/
         if ($firstPayment['amount'] <= 0) {
             $firstPayment['amount'] = PaystackHelper::getMinimumAmountForAuthorization($transaction->currency);
             $firstPayment['metadata']['amount_is_for_authorization_only'] = 'yes'; // we'll refund this amount later after confirmation
@@ -169,6 +172,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
         }
 
         $vendorSubscriptionId = $subscriptionModel->vendor_subscription_id;
+        $order = $subscriptionModel->order;
 
         if (!$vendorSubscriptionId) {
             return new \WP_Error(
@@ -177,52 +181,115 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             );
         }
 
-        $paystackCustomerId = $subscriptionModel->vendor_customer_id;
-        $paystackPlanId = $subscriptionModel->vendor_plan_id;
+        $payStackCustomerId = $subscriptionModel->vendor_customer_id;
+        $payStackPlanId = $subscriptionModel->vendor_plan_id;
 
-        $paystackSubscription = PaystackAPI::getPaystackObject('subscription/' . $vendorSubscriptionId);
+        $payStackSubscription = PaystackAPI::getPaystackObject('subscription/' . $vendorSubscriptionId);
+        if (is_wp_error($payStackSubscription)) {
+            return $payStackSubscription;
+        }
+
+        $authorizationCode = Arr::get($payStackSubscription, 'data.authorization.authorization_code');
+        $subscriptionUpdateData = PaystackHelper::getSubscriptionUpdateData($payStackSubscription, $subscriptionModel);
         // get all transaction for this customer, then match the transactions with vendor_plan_id with plan_code of transactions
-        $transactions = PaystackAPI::getPaystackObject('transaction', [
-            'customer' => $paystackCustomerId
-        ]);
+        $customerTransactions = [];
+
+        $next = null;
+        do{
+            if ($next) {
+                $transactions = PaystackAPI::getPaystackObject('transaction', [
+                    'customer' => $payStackCustomerId,
+                    'next'     => $next
+                ]);
+            } else {
+                $transactions = PaystackAPI::getPaystackObject('transaction', [
+                    'customer' => $payStackCustomerId
+                ]);
+            }
+
+            if (is_wp_error($transactions)) {
+                break;
+            }
+            $customerTransactions = [...$customerTransactions, ...Arr::get($transactions, 'data', [])];
+
+            $next = Arr::get($transactions, 'meta.next',null);
+
+        } while($next);
 
 
-//        dsd([
-//            'paystack_subscription' => $paystackSubscription,
-//            'transactions' => $transactions
-//        ]);
 
+        $subscriptionTransactions = array_filter($customerTransactions, function($transaction) use ($authorizationCode) {
+            return Arr::get($transaction, 'authorization.authorization_code') === $authorizationCode;
+        });
 
-        if (is_wp_error($transactions)) {
-            return $transactions;
+        $newPayment = false;
+        foreach($subscriptionTransactions as $payment){
+            $vendorChargeId = Arr::get($payment, 'id');
+
+            if (Arr::get($payment, 'status') == 'success') {
+
+                $amount = Arr::get($payment, 'amount');
+                $methodType  = Arr::get($payment, 'authorization.payment_type');
+                $cardLast4 =  Arr::get($payment, 'authorization.last4', null);
+                $cardBrand = Arr::get($payment, 'authorization.brand', null);
+
+                $transaction = OrderTransaction::query()->where('vendor_charge_id', $vendorChargeId)->first();
+
+                if (!$transaction) {
+
+                    $transaction = OrderTransaction::query()
+                        ->where('subscription_id', $subscriptionModel->id)
+                        ->where('vendor_charge_id', '')
+                        ->where('transaction_type', Status::TRANSACTION_TYPE_CHARGE)
+                        ->first();
+
+                    if ($transaction) {
+                        $transaction->update([
+                            'vendor_charge_id'      => $vendorChargeId,
+                            'status'                => Status::TRANSACTION_SUCCEEDED,
+                            'total'                 => $amount,
+                            'card_last_4'           => $cardLast4,
+                            'card_brand'            => $cardBrand,
+                            'payment_method_type'   => $methodType
+                        ]);
+
+                        (new StatusHelper($transaction->order))->syncOrderStatuses($transaction);
+
+                        continue;
+                    }
+                    // Create new transaction
+                    $transactionData = [
+                        'order_id'         => $order->id,
+                        'amount'           => $amount,
+                        'currency'         => Arr::get($payment, 'currency'),
+                        'vendor_charge_id' => $vendorChargeId,
+                        'status'           => status::TRANSACTION_SUCCEEDED,
+                        'payment_method'   => 'paystack',
+                        'transaction_type' => Status::TRANSACTION_TYPE_CHARGE,
+                        'meta'             => Arr::get($payment, 'authorization', []),
+                        'card_last_4'      => $cardLast4,
+                        'card_brand'       => $cardBrand,
+                        'created_at'       => DateTime::anyTimeToGmt(Arr::get($payment, 'paidAt'))->format('Y-m-d H:i:s'),
+                    ];
+                    $newPayment = true;
+                    SubscriptionService::recordRenewalPayment($transactionData, $subscriptionModel, $subscriptionUpdateData);
+                } else if ($transaction->status !== Status::TRANSACTION_SUCCEEDED) {
+                    // Update existing transaction if status has changed
+                    $transaction->update([
+                        'status' => status::TRANSACTION_SUCCEEDED,
+                    ]);
+
+                    (new StatusHelper($transaction->order))->syncOrderStatuses($transaction);
+                }
+            }
         }
 
-        $subscriptionData = Arr::get($transactions, 'data', []);
-        $status = Arr::get($subscriptionData, 'status');
-        $nextBillingDate = Arr::get($subscriptionData, 'next_payment_date');
-
-        // Transform and update subscription status
-        $updatedStatus = PaystackHelper::getFctSubscriptionStatus($status);
-
-        $updateData = [
-            'status' => $updatedStatus,
-        ];
-
-        if ($nextBillingDate) {
-            $updateData['next_billing_date'] = DateTime::anyTimeToGmt($nextBillingDate)->format('Y-m-d H:i:s');
+        // Update subscription data
+        if (!$newPayment) {
+            $subscriptionModel = SubscriptionService::syncSubscriptionStates($subscriptionModel, $subscriptionUpdateData);
+        } else {
+            $subscriptionModel = Subscription::query()->find($subscriptionModel->id);
         }
-
-        $subscriptionModel->update($updateData);
-
-        fluent_cart_add_log(
-            __('Paystack Subscription Sync', 'paystack-for-fluent-cart'),
-            __('Subscription synced from Paystack. Status: ', 'paystack-for-fluent-cart') . $status,
-            'info',
-            [
-                'module_name' => 'subscription',
-                'module_id'   => $subscriptionModel->id,
-            ]
-        );
 
         return $subscriptionModel;
     }

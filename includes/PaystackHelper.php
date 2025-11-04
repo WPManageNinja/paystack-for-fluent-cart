@@ -2,8 +2,9 @@
 
 namespace PaystackFluentCart;
 
-use FluentCart\App\Helpers\Helper;
 use FluentCart\App\Helpers\Status;
+use FluentCart\App\Services\DateTime\DateTime;
+use FluentCart\Framework\Support\Arr;
 
 class PaystackHelper
 {
@@ -63,5 +64,33 @@ class PaystackHelper
         ];
 
         return $minimumAmounts[$currency] * 100 ?? 100;
+    }
+
+    public static function getSubscriptionUpdateData($paystackSubscription, $subscriptionModel)
+    {
+        $status = self::getFctSubscriptionStatus(Arr::get($paystackSubscription, 'data.status'));
+
+        $subscriptionUpdateData = array_filter([
+            'current_payment_method' => 'paystack',
+            'status'                 => $status
+        ]);
+
+        // Handle cancellation
+        if ($status === Status::SUBSCRIPTION_CANCELED) {
+            $canceledAt = Arr::get($paystackSubscription, 'canceledAt');
+            if ($canceledAt) {
+                $subscriptionUpdateData['canceled_at'] = DateTime::anyTimeToGmt($canceledAt)->format('Y-m-d H:i:s');
+            } else {
+                $subscriptionUpdateData['canceled_at'] = DateTime::gmtNow()->format('Y-m-d H:i:s');
+            }
+        }
+
+        // Handle next billing date
+        $nextPaymentDate = Arr::get($paystackSubscription, 'data.next_payment_date');
+        if ($nextPaymentDate) {
+            $subscriptionUpdateData['next_billing_date'] = DateTime::anyTimeToGmt($nextPaymentDate)->format('Y-m-d H:i:s');
+        }
+
+        return $subscriptionUpdateData;
     }
 }
