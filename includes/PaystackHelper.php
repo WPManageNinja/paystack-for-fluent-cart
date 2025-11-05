@@ -7,6 +7,8 @@ use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
 use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
+use FluentCart\App\Models\SubscriptionMeta;
+use FluentCart\App\Models\Subscription;
 
 class PaystackHelper
 {
@@ -47,6 +49,7 @@ class PaystackHelper
         $statusMap = [
             'active'    => status::SUBSCRIPTION_ACTIVE,
             'inactive'  => status::SUBSCRIPTION_EXPIRED,
+            'non-renewing' => status::SUBSCRIPTION_CANCELED,
             'cancelled' => status::SUBSCRIPTION_CANCELED,
             'paused'    => status::SUBSCRIPTION_PAUSED
         ];
@@ -64,6 +67,26 @@ class PaystackHelper
 
         if ($orderTransaction) {
             return Order::query()->where('id', $orderTransaction->order_id)->first();
+        }
+
+        return null;
+    }
+
+    public static function getOrderFromEmailToken($emailToken)
+    {
+        $subscriptionId = SubscriptionMeta::query()
+            ->where('meta_key', 'paystack_email_token')
+            ->where('meta_value', $emailToken)
+            ->value('subscription_id');
+
+        if ($subscriptionId) {
+            $subscriptionModel = Subscription::query()
+                ->where('id', $subscriptionId)
+                ->first();
+
+            if ($subscriptionModel) {
+                return Order::query()->where('id', $subscriptionModel->parent_order_id)->first();
+            }
         }
 
         return null;

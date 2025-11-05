@@ -8,6 +8,8 @@ use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
 use FluentCart\Framework\Support\Arr;
 use FluentCart\App\Events\Order\OrderRefund;
+use FluentCart\App\Events\Subscription\SubscriptionActivated;
+use FluentCart\App\Services\DateTime\DateTime;
 use PaystackFluentCart\Settings\PaystackSettingsBase;
 use PaystackFluentCart\Confirmations\PaystackConfirmations;
 use PaystackFluentCart\PaystackHelper;
@@ -18,13 +20,15 @@ class PaystackWebhook
 {
     public function init()
     {
-        add_action('fluent_cart/payments/paystack/webhook_charge_success', [$this, 'handleChargeSuccess'], 10, 1);
-        add_action('fluent_cart/payments/paystack/webhook_subscription_create', [$this, 'handleSubscriptionCreate'], 10, 1);
-        add_action('fluent_cart/payments/paystack/webhook_subscription_disable', [$this, 'handleSubscriptionDisable'], 10, 1);
-        add_action('fluent_cart/payments/paystack/webhook_refund_processed', [$this, 'handleRefundProcessed'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_charge_success', [$this, 'handleChargeSuccess'], 10, 1); // done
+        add_action('fluent_cart/payments/paystack/webhook_subscription_create', [$this, 'handleSubscriptionCreate'], 10, 1); // done
+        add_action('fluent_cart/payments/paystack/webhook_subscription_not_renew', [$this, 'handleSubscriptionCanceled'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_refund_processed', [$this, 'handleRefundProcessed'], 10, 1); // done
 
-        add_action('fluent_cart/payments/paystack/webhook_invoice_create', [$this, 'handleInvoiceUpdate'], 10, 1);
-        add_action('fluent_cart/payments/paystack/webhook_invoice_update', [$this, 'handleInvoiceUpdate'], 10, 1);
+        add_action('fluent_cart/payments/paystack/webhook_invoice_create', [$this, 'handleInvoiceCreate'], 10, 1); // not handling
+        add_action('fluent_cart/payments/paystack/webhook_invoice_update', [$this, 'handleInvoiceUpdate'], 10, 1); // done
+
+        // .... rest of the webhook handlers can be added here
     }
 
     /**
@@ -37,30 +41,13 @@ class PaystackWebhook
         $data = json_decode($input, true);
 
         // Verify webhook signature
-//        if (!$this->verifySignature($input)) {
-//            http_response_code(401);
-//            exit('Invalid signature');
-//        }
+       if (!$this->verifySignature($input)) {
+           http_response_code(401);
+           exit('Invalid signature');
+       }
 
 
-        $orderHash = Arr::get($data, 'data.metadata.order_hash');
-
-        $order = null;
-        if ($orderHash) {
-            $order = Order::query()->where('uuid', $orderHash)->first();
-        }
-
-
-
-        // transaction reference
-        $transactionreference = Arr::get($data, 'data.transaction_reference');
-
-        if ($transactionreference) {
-            $referenceParts = explode('_', $transactionreference);
-            $transactionHash = $referenceParts[0];
-
-            $order = PaystackHelper::getOrderFromTransactionHash($transactionHash);
-        }
+        $order = $this->getFluenCartOrder($data);
 
         if (!$order) {
             http_response_code(404);
@@ -182,8 +169,6 @@ class PaystackWebhook
             'billing_info' => $billingInfo
         ]);
 
-        $this->sendResponse(200, 'Charge processed successfully');
-
     }
 
     /**
@@ -191,26 +176,115 @@ class PaystackWebhook
      */
     public function handleSubscriptionCreate($data)
     {
+        $paystackSubscription = Arr::get($data, 'payload');
+        
+        $order = Arr::get($data, 'order');
+
+        $subscriptionModel = Subscription::query()
+            ->where('parent_order_id', $order->id)
+            ->first();
+
+        
+        if (!$subscriptionModel) {
+            $this->sendResponse(200, 'No subscription found for the order, skipping subscription creation handling.');
+        }
+
+        $oldStatus = $subscriptionModel->status;
+
+
+        $oldStatus = $subscriptionModel->status;
+        $status = PaystackHelper::getFctSubscriptionStatus(Arr::get($paystackSubscription, 'data.status'));
+
+        $updateData = [
+            'vendor_subscription_id' => Arr::get($paystackSubscription, 'data.subscription_code'),
+            'status'                 => $status,
+            'vendor_customer_id'     => Arr::get($paystackSubscription, 'customer.customer_code'),
+            'next_billing_date'      => Arr::get($paystackSubscription, 'data.next_payment_date') ? DateTime::anyTimeToGmt(Arr::get($paystackSubscription, 'data.next_payment_date'))->format('Y-m-d H:i:s') : null,
+        ];
+
+
+        $billingInfo = [
+            'type' => Arr::get($paystackSubscription, 'authorization.payment_type', 'card'),
+            'last4' =>  Arr::get($paystackSubscription, 'authorization.last4'),
+            'brand' => Arr::get($paystackSubscription, 'authorization.brand'),
+            'payment_method_id' => Arr::get($paystackSubscription, 'authorization.authorization_code'),
+            'payment_method_type' => Arr::get($paystackSubscription, 'authorization.channel'),
+            'exp_month' => Arr::get($paystackSubscription, 'authorization.exp_month'),
+            'exp_year' => Arr::get($paystackSubscription, 'authorization.exp_year')
+        ];
+
+        $subscriptionModel->update($updateData);
+
+        $subscriptionModel->updateMeta('active_payment_method', $billingInfo);
+        $subscriptionModel->updateMeta('paystack_email_token', Arr::get($paystackSubscription, 'email_token'));
+
+        fluent_cart_add_log(__('Paystack Subscription Created', 'paystack-for-fluent-cart'), 'Subscription created on Paystack. Code: ' . Arr::get($paystackSubscription, 'subscription_code'), 'info', [
+            'module_name' => 'order',
+            'module_id'   => $order->id
+        ]);
+
+        if ($oldStatus != $subscriptionModel->status && (Status::SUBSCRIPTION_ACTIVE === $subscriptionModel->status || Status::SUBSCRIPTION_TRIALING === $subscriptionModel->status)) {
+            (new SubscriptionActivated($subscriptionModel, $order, $order->customer))->dispatch();
+        }
+
+    }
+
+    /**
+     * Handle invoice created
+     */
+    public function handleInvoiceCreate($data)
+    {
+        // You can implement any specific logic needed when an invoice is created.
+        // For now, we'll just log the event.
+        // implement if needed;
+        // case send notification to admin or customer
 
     }
 
     // handling invoice paid
     public function handleInvoiceUpdate($data)
     {
-        $order = Arr::get($data, 'order');
-        $invoice = Arr::get($data, 'data');
-        $invoiceStatus = Arr::get($invoice, 'status');
+        $invoice = Arr::get($data, 'payload');
+ 
+        if (Arr::get($invoice, 'status') === 'success' && Arr::get($invoice, 'paid') === true) {
+            
 
-        if ($invoiceStatus === 'paid') {
+            $subscriptionCode = Arr::get($invoice, 'subscription.subscription_code');
+
+            $subscriptionModel = Subscription::query()
+                ->where('vendor_subscription_id', $subscriptionCode)
+                ->first();
+            
+            if (!$subscriptionModel || ($subscriptionModel->status === Status::SUBSCRIPTION_CANCELED || $subscriptionModel->status === Status::SUBSCRIPTION_COMPLETED || $subscriptionModel->status === Status::SUBSCRIPTION_EXPIRED)) {
+                return false;
+            }
+
+            $subscriptionModel->reSyncFromRemote();
 
         }
+
     }
 
-    /**
-     * Handle subscription disable
-     */
-    public function handleSubscriptionDisable($data)
+    public function handleSubscriptionCanceled($data)
     {
+
+        $paystackSubscription = Arr::get($data, 'payload');
+
+        $paystackSubscriptionCode = Arr::get($paystackSubscription, 'subscription_code');
+
+        $subscriptionModel = Subscription::query()
+            ->where('vendor_subscription_id', $paystackSubscriptionCode)
+            ->first();
+
+        
+        
+        if (!$subscriptionModel || ($subscriptionModel->status === Status::SUBSCRIPTION_CANCELED || $subscriptionModel->status === Status::SUBSCRIPTION_COMPLETED || $subscriptionModel->status === Status::SUBSCRIPTION_EXPIRED)) {
+            return false;
+        }
+
+        $subscriptionModel->reSyncFromRemote();
+
+        $this->sendResponse(200, 'Subscription cancellation processed successfully');
 
     }
 
@@ -267,6 +341,51 @@ class PaystackWebhook
         (new OrderRefund($order, $currentCreatedRefund))->dispatch();
 
 
+    }
+
+    public function getFluenCartOrder($data)
+    {
+        $order = null;
+
+        $orderHash = Arr::get($data, 'data.metadata.order_hash');
+
+        if ($orderHash) {
+            $order = Order::query()->where('uuid', $orderHash)->first();
+        }
+
+        // transaction reference
+        $transactionreference = Arr::get($data, 'data.transaction_reference');
+
+        if ($transactionreference && !$order) {
+            $referenceParts = explode('_', $transactionreference);
+            $transactionHash = $referenceParts[0];
+
+            $order = PaystackHelper::getOrderFromTransactionHash($transactionHash);
+        }
+
+        $paystackSubscriptionCode = Arr::get($data, 'data.subscription_code');
+        if (!$paystackSubscriptionCode) {
+            $paystackSubscriptionCode = Arr::get($data, 'data.subscription.subscription_code');
+        }
+
+        if ($paystackSubscriptionCode && !$order) {
+            $subscriptionModel = Subscription::query()
+                ->where('vendor_subscription_id', $paystackSubscriptionCode)
+                ->first();
+            
+            if ($subscriptionModel) {
+                $order = Order::query()->where('id', $subscriptionModel->parent_order_id)->first();
+            }
+        }
+
+        $emailToken = Arr::get($data, 'data.email_token');
+
+
+        if ($emailToken && !$order) {
+            $order = PaystackHelper::getOrderFromEmailToken($emailToken);
+        }
+
+        return $order;
     }
 
     protected function sendResponse($statusCode = 200, $message = 'Success')
