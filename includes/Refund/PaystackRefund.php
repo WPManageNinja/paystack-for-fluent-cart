@@ -117,7 +117,7 @@ class PaystackRefund
             return $createdRefund instanceof OrderTransaction ? $createdRefund : null;
         }
 
-        $currentRefundMollieId = Arr::get($refundData, 'vendor_charge_id', '');
+        $currentRefundPaystackId = Arr::get($refundData, 'vendor_charge_id', '');
 
         $existingLocalRefund = null;
         foreach ($allRefunds as $refund) {
@@ -131,8 +131,8 @@ class PaystackRefund
             }
 
             if (!$refund->vendor_charge_id) { // This is a local refund without vendor charge id
-                $refundMollieId = Arr::get($refund->meta, 'mollie_refund_id', '');
-                $isRefundMatched = $refundMollieId == $currentRefundMollieId;
+                $refundPaystackId = Arr::get($refund->meta, 'paystack_refund_id', '');
+                $isRefundMatched = $refundPaystackId == $currentRefundPaystackId;
 
                 // This is a local refund without vendor charge id, we will update it
                 if ($refund->total == $refundData['total'] && $isRefundMatched) {

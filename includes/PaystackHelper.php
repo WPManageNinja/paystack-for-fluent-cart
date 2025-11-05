@@ -5,6 +5,8 @@ namespace PaystackFluentCart;
 use FluentCart\App\Helpers\Status;
 use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
+use FluentCart\App\Models\Order;
+use FluentCart\App\Models\OrderTransaction;
 
 class PaystackHelper
 {
@@ -50,6 +52,21 @@ class PaystackHelper
         ];
 
         return $statusMap[$status] ?? 'active';
+    }
+
+    public static function getOrderFromTransactionHash($transactionHash)
+    {
+        $orderTransaction = OrderTransaction::query()
+            ->where('uuid', $transactionHash)
+            ->where('payment_method', 'paystack')
+            ->first();
+            
+
+        if ($orderTransaction) {
+            return Order::query()->where('id', $orderTransaction->order_id)->first();
+        }
+
+        return null;
     }
 
     public static function getMinimumAmountForAuthorization($currency)

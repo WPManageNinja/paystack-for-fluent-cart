@@ -7,9 +7,12 @@ use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
 use FluentCart\Framework\Support\Arr;
+use FluentCart\App\Events\Order\OrderRefund;
 use PaystackFluentCart\Settings\PaystackSettingsBase;
 use PaystackFluentCart\Confirmations\PaystackConfirmations;
+use PaystackFluentCart\PaystackHelper;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
+use PaystackFluentCart\Refund\PaystackRefund;
 
 class PaystackWebhook
 {
@@ -39,11 +42,24 @@ class PaystackWebhook
 //            exit('Invalid signature');
 //        }
 
+
         $orderHash = Arr::get($data, 'data.metadata.order_hash');
 
         $order = null;
         if ($orderHash) {
             $order = Order::query()->where('uuid', $orderHash)->first();
+        }
+
+
+
+        // transaction reference
+        $transactionreference = Arr::get($data, 'data.transaction_reference');
+
+        if ($transactionreference) {
+            $referenceParts = explode('_', $transactionreference);
+            $transactionHash = $referenceParts[0];
+
+            $order = PaystackHelper::getOrderFromTransactionHash($transactionHash);
         }
 
         if (!$order) {
@@ -52,6 +68,7 @@ class PaystackWebhook
         }
 
         $event = str_replace('.', '_', Arr::get($data, 'event'));
+
 
         if (has_action('fluent_cart/payments/paystack/webhook_' . $event)) {
             do_action('fluent_cart/payments/paystack/webhook_' . $event, [
@@ -121,7 +138,7 @@ class PaystackWebhook
         }
 
         // Check if already processed
-        if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED && ($subscriptionHash && $subscriptionModel->status !== Status::SUBSCRIPTION_PENDING)) {
+        if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED) {
             wp_send_json([
                 'redirect_url' => $transactionModel->getReceiptPageUrl(),
                 'order' => [
@@ -202,6 +219,53 @@ class PaystackWebhook
      */
     public function handleRefundProcessed($data)
     {
+       $refund = Arr::get($data, 'payload');
+       $order = Arr::get($data, 'order');
+    
+       $transactionReference = Arr::get($refund, 'transaction_reference');
+       $transactionHash = explode('_', $transactionReference)[0];
+
+       $parentTransaction = OrderTransaction::query()
+            ->where('uuid', $transactionHash)
+            ->where('payment_method', 'paystack')
+            ->first();
+
+
+        if (!$parentTransaction) {
+           $this->sendResponse(200, 'Parent transaction found, refund processing can be handled here.');
+        }
+
+        $currentCreatedRefund = null;
+
+        $refundId = Arr::get($refund, 'id');
+        $amount = Arr::get($refund, 'amount');
+        $refundCurrency = Arr::get($refund, 'currency');
+
+        // Prepare refund data matching Stripe pattern
+        $refundData = [
+            'order_id'           => $order->id,
+            'transaction_type'   => Status::TRANSACTION_TYPE_REFUND,
+            'status'             => Status::TRANSACTION_REFUNDED,
+            'payment_method'     => 'paystack',
+            'payment_mode'       => $parentTransaction->payment_mode,
+            'vendor_charge_id'   => $refundId,
+            'total'              => $amount,
+            'currency'           => $refundCurrency,
+            'meta'               => [
+                'parent_id'          => $parentTransaction->id,
+                'refund_description' => Arr::get($refund, 'description', ''),
+                'refund_source'      => 'webhook'
+            ]
+        ];
+
+
+        $syncedRefund = (new PaystackRefund())->createOrUpdateIpnRefund($refundData, $parentTransaction);
+        if ($syncedRefund->wasRecentlyCreated) {
+            $currentCreatedRefund = $syncedRefund;
+        }
+
+        (new OrderRefund($order, $currentCreatedRefund))->dispatch();
+
 
     }
 

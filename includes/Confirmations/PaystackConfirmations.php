@@ -20,7 +20,7 @@ class PaystackConfirmations
         add_action('wp_ajax_nopriv_fluent_cart_confirm_paystack_payment', [$this, 'confirmPaystackPayment']);
         add_action('wp_ajax_fluent_cart_confirm_paystack_payment', [$this, 'confirmPaystackPayment']);
 
-        // not needed for onsite payment methods,  but useful for redirect payment
+        // not needed as already handling via custom ajax action in the above two lines
         /*
          * $data params contains
          *  - order_hash (order uuid)
