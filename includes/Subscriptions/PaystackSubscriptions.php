@@ -6,6 +6,7 @@ use FluentCart\App\Helpers\Status;
 use FluentCart\App\Helpers\StatusHelper;
 use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
+use FluentCart\App\Models\Order;
 use FluentCart\App\Modules\PaymentMethods\Core\AbstractSubscriptionModule;
 use FluentCart\App\Events\Subscription\SubscriptionActivated;
 use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
@@ -353,6 +354,11 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'module_id'   => $order->id
         ]);
 
+        fluent_cart_add_log(__('Paystack Subscription Created', 'paystack-for-fluent-cart'), 'Subscription created on Paystack. Code: ' . Arr::get($payStackSubscription, 'data.subscription_code'), 'info', [
+            'module_name' => 'subscription',
+            'module_id'   => $subscriptionModel->id
+        ]);
+
         if ($oldStatus != $subscriptionModel->status && (Status::SUBSCRIPTION_ACTIVE === $subscriptionModel->status || Status::SUBSCRIPTION_TRIALING === $subscriptionModel->status)) {
             (new SubscriptionActivated($subscriptionModel, $order, $order->customer))->dispatch();
         }
@@ -413,6 +419,22 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'status'     => Status::SUBSCRIPTION_CANCELED,
             'canceled_at' => DateTime::gmtNow()->format('Y-m-d H:i:s')
         ]);
+
+        $orderId = $subscriptionModel->parent_order_id;
+        if ($orderId) {
+            $order = Order::query()->where('id', $orderId)->first();
+        } 
+
+        fluent_cart_add_log(
+            __('Paystack Subscription Cancelled', 'paystack-for-fluent-cart'),
+            __('Subscription cancelled on Paystack. Code: ', 'paystack-for-fluent-cart') . $subscriptionCode,
+            'info',
+            [
+                'module_name' => 'order',
+                'module_id'   => $order->id,
+            ]
+        );
+
 
         fluent_cart_add_log(
             __('Paystack Subscription Cancelled', 'paystack-for-fluent-cart'),

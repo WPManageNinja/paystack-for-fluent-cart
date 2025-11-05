@@ -2,12 +2,13 @@
 /**
  * Plugin Name: Paystack for FluentCart
  * Plugin URI: https://fluentcart.com
- * Description: Accept payments via Paystack in FluentCart - supports one-time payments, subscriptions, and automatic refunds
+ * Description: Accept payments via Paystack in FluentCart - supports one-time payments, subscriptions, and automatic refunds via webhooks.
  * Version: 1.0.0
  * Author: FluentCart
  * Author URI: https://fluentcart.com
  * Text Domain: paystack-for-fluent-cart
  * Domain Path: /languages
+ * Requires plugins: fluent-cart
  * Requires at least: 5.6
  * Requires PHP: 7.4
  * License: GPLv2 or later
@@ -22,16 +23,12 @@ define('PAYSTACK_FC_PLUGIN_FILE', __FILE__);
 define('PAYSTACK_FC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('PAYSTACK_FC_PLUGIN_URL', plugin_dir_url(__FILE__));
 
-/**
- * Load plugin textdomain for translations
- */
+
 add_action('plugins_loaded', function() {
     load_plugin_textdomain('paystack-for-fluent-cart', false, dirname(plugin_basename(__FILE__)) . '/languages');
 });
 
-/**
- * Check if FluentCart is active
- */
+
 function paystack_fc_check_dependencies() {
     if (!defined('FLUENTCART_VERSION')) {
         add_action('admin_notices', function() {
@@ -46,18 +43,30 @@ function paystack_fc_check_dependencies() {
         });
         return false;
     }
+    
+    if (version_compare(FLUENTCART_VERSION, '1.2.5', '<')) {
+        add_action('admin_notices', function() {
+            ?>
+            <div class="notice notice-error">
+                <p>
+                    <strong><?php _e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
+                    <?php printf(__('requires FluentCart version %s or higher. You have version %s installed.', 'paystack-for-fluent-cart'), '1.2.5', FLUENTCART_VERSION); ?>
+                </p>
+            </div>
+            <?php
+        });
+        return false;
+    }
+    
     return true;
 }
 
-/**
- * Initialize the plugin
- */
+
 add_action('plugins_loaded', function() {
     if (!paystack_fc_check_dependencies()) {
         return;
     }
 
-    // Register autoloader
     spl_autoload_register(function ($class) {
         $prefix = 'PaystackFluentCart\\';
         $base_dir = PAYSTACK_FC_PLUGIN_DIR . 'includes/';
@@ -75,16 +84,13 @@ add_action('plugins_loaded', function() {
         }
     });
 
-    // Register the payment gateway
     add_action('fluent_cart/register_payment_methods', function($data) {
         \PaystackFluentCart\PaystackGateway::register();
     }, 10);
 
 }, 20);
 
-/**
- * Activation hook
- */
+
 register_activation_hook(__FILE__, function() {
     if (!paystack_fc_check_dependencies()) {
         deactivate_plugins(plugin_basename(__FILE__));

@@ -204,7 +204,8 @@ class PaystackConfirmations
         }
 
         if ($order->type == status::ORDER_TYPE_RENEWAL) {
-            $subscriptionModel = Subscription::query()->where('parent_order_id', $transactionModel->order_id)->first();
+            $subscriptionModel = Subscription::query()->where('id', $transactionModel->subscription_id)->first();
+
 
             if (!$subscriptionModel || !$subscriptionData) {
                 return $order; // No subscription found for this renewal order. Something is wrong.
