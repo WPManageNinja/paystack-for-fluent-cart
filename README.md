@@ -41,6 +41,31 @@ A WordPress plugin that integrates Paystack payment gateway with FluentCart.
    https://yourdomain.com/?fluent-cart=fct_payment_listener_ipn&method=paystack
    ```
 
+## For Developers
+
+This plugin serves as both a production-ready payment gateway and a **comprehensive example** for third-party developers who want to integrate their own payment gateways with FluentCart.
+
+### 📚 Integration Documentation
+
+See **[PAYMENT_GATEWAY_INTEGRATION_GUIDE.md](PAYMENT_GATEWAY_INTEGRATION_GUIDE.md)** for a complete guide on building payment gateway integrations for FluentCart, including:
+
+- Plugin setup and structure
+- Gateway registration with FluentCart API  
+- Settings field configuration (all supported field types)
+- Payment method rendering options (hooks, custom JS)
+- Checkout processing (redirect, onsite, popup/modal)
+- Payment confirmation handling
+- Web hook/IPN implementation
+- Subscription and refund support
+- Testing and debugging
+
+### Example Implementations
+
+- **Redirect Payment**: See `Onetime/PaystackProcessor.php` 
+- **Popup/Modal Payment**: See `assets/js/paystack-checkout.js`
+- **Web hook Handling**: See `Webhook/PaystackWebhook.php`
+- **Settings Management**: See `Settings/PaystackSettingsBase.php`
+
 ## Development
 
 ### Directory Structure
