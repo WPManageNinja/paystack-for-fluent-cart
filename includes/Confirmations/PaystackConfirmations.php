@@ -33,11 +33,26 @@ class PaystackConfirmations
 
     }
 
-    /**
-     * Confirm Paystack payment after successful checkout
-     */
+
     public function confirmPaystackPayment()
     {
+        
+        if (isset($_REQUEST['paystack_fct_nonce'])) {
+            $nonce = sanitize_text_field(wp_unslash($_REQUEST['paystack_fct_nonce']));
+            if (!wp_verify_nonce($nonce, 'paystack_fct_nonce')) {
+                wp_send_json([
+                    'message' => 'Invalid nonce. Please refresh the page and try again.',
+                    'status' => 'failed'
+                ], 400);
+            }
+        } else {
+            wp_send_json([
+                'message' => 'Nonce is required for security verification.',
+                'status' => 'failed'
+            ], 400);
+        }
+        
+
         if (!isset($_REQUEST['trx_id'])) {
             wp_send_json([
                 'message' => 'Transaction ID is required to confirm the payment.',
@@ -45,7 +60,7 @@ class PaystackConfirmations
             ], 400);
         }
 
-        $paystackTransactionId = sanitize_text_field($_REQUEST['trx_id'] ?? '');
+        $paystackTransactionId = sanitize_text_field(wp_unslash($_REQUEST['trx_id']) ?? '');
         
         // get the transaction from paystack using the reference
         $paystackTransaction = PaystackAPI::getPaystackObject('transaction/' . $paystackTransactionId);

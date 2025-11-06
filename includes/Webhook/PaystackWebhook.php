@@ -36,16 +36,23 @@ class PaystackWebhook
      */
     public function verifyAndProcess()
     {
-        // Get webhook payload
-        $input = @file_get_contents('php://input');
-        $data = json_decode($input, true);
+        $payload = $this->getWebhookPayload();
+        if (is_wp_error($payload)) {
+            http_response_code(400);
+            exit('Not valid payload');
+        }
 
-        // Verify webhook signature
-       if (!$this->verifySignature($input)) {
-           http_response_code(401);
-           exit('Invalid signature');
-       }
+        $data = json_decode($payload, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            http_response_code(400);
+            exit('Invalid JSON payload');
+        }
 
+        if (!$this->verifySignature($payload)) {
+            http_response_code(401);
+            exit('Invalid signature / Verification failed');
+        }
 
         $order = $this->getFluenCartOrder($data);
 
@@ -70,26 +77,45 @@ class PaystackWebhook
         exit('Webhook not handled');
     }
 
-    /**
-     * Verify Paystack webhook signature
-     */
+
+    private function getWebhookPayload()
+    {
+        $input = file_get_contents('php://input');
+        
+        // Check payload size (max 1MB)
+        if (strlen($input) > 1048576) {
+            return new \WP_Error('payload_too_large', 'Webhook payload too large');
+        }
+        
+        if (empty($input)) {
+            return new \WP_Error('empty_payload', 'Empty webhook payload');
+        }
+        
+        return $input;
+    }
+
+    
     private function verifySignature($payload)
     {
-        $signature = $_SERVER['HTTP_X_PAYSTACK_SIGNATURE'] ?? '';
+        // Sanitize server input
+        $signature = isset($_SERVER['HTTP_X_PAYSTACK_SIGNATURE']) ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_PAYSTACK_SIGNATURE'])) : '';
         
         if (!$signature) {
             return false;
         }
 
         $secretKey = (new PaystackSettingsBase())->getSecretKey();
+        
+        if (!$secretKey) {
+            return false;
+        }
+        
         $computedSignature = hash_hmac('sha512', $payload, $secretKey);
 
         return hash_equals($signature, $computedSignature);
     }
 
-    /**
-     * Handle successful charge
-     */
+
     public function handleChargeSuccess($data)
     {
        $paystackTransaction = Arr::get($data, 'payload');
@@ -171,9 +197,7 @@ class PaystackWebhook
 
     }
 
-    /**
-     * Handle subscription creation
-     */
+    
     public function handleSubscriptionCreate($data)
     {
         $paystackSubscription = Arr::get($data, 'payload');
@@ -229,9 +253,7 @@ class PaystackWebhook
 
     }
 
-    /**
-     * Handle invoice created
-     */
+   
     public function handleInvoiceCreate($data)
     {
         // You can implement any specific logic needed when an invoice is created.
@@ -288,9 +310,6 @@ class PaystackWebhook
 
     }
 
-    /**
-     * Handle refund processed
-     */
     public function handleRefundProcessed($data)
     {
        $refund = Arr::get($data, 'payload');

@@ -1,8 +1,20 @@
 <?php
+/**
+ * Paystack API Handler
+ *
+ * @package PaystackFluentCart
+ * @since 1.0.0
+ */
+
 
 namespace PaystackFluentCart\API;
 
 use PaystackFluentCart\Settings\PaystackSettingsBase;
+
+if (!defined('ABSPATH')) {
+    exit; // Direct access not allowed.
+}
+
 
 class PaystackAPI
 {
@@ -23,20 +35,38 @@ class PaystackAPI
 
     private static function request($endpoint, $method = 'GET', $data = [])
     {
+        // Input validation
+        if (empty($endpoint) || !is_string($endpoint)) {
+            return new \WP_Error('invalid_endpoint', 'Invalid API endpoint provided');
+        }
+
+        
+        // Validate HTTP method
+        $allowedMethods = ['GET', 'POST', 'PUT', 'DELETE'];
+        if (!in_array(strtoupper($method), $allowedMethods, true)) {
+            return new \WP_Error('invalid_method', 'Invalid HTTP method');
+        }
+
         $url = self::$baseUrl . $endpoint;
         $secretKey = self::getSettings()->getSecretKey();
 
+        if (!$secretKey) {
+            return new \WP_Error('missing_api_key', 'Paystack API key is not configured');
+        }
+
         $args = [
-            'method'  => $method,
+            'method'  => strtoupper($method),
             'headers' => [
-                'Authorization' => 'Bearer ' . $secretKey,
+                'Authorization' => 'Bearer ' . sanitize_text_field($secretKey),
                 'Content-Type'  => 'application/json',
+                'User-Agent'    => 'PaystackFluentCart/1.0.0 WordPress/' . get_bloginfo('version'),
             ],
             'timeout' => 30,
+            'sslverify' => true, // Always verify SSL
         ];
 
         if ($method === 'POST' && !empty($data)) {
-            $args['body'] = json_encode($data);
+            $args['body'] = wp_json_encode($data);
         }
 
         $response = wp_remote_request($url, $args);

@@ -49,14 +49,14 @@ class PaystackRefund
         }
 
         if (Arr::get($refund, 'status') !== true) {
-            return new \WP_Error('refund_failed', __('Refund could not be processed in Paystack. Please check your Paystack account', 'paytsack-for-fluent-cart'));
+            return new \WP_Error('refund_failed', __('Refund could not be processed in Paystack. Please check your Paystack account', 'paystack-for-fluent-cart'));
         }
 
         $status = Arr::get($refund, 'data.status');
         $acceptedStatus = ['pending', 'processing', 'processed'];
 
         if (!in_array($status, $acceptedStatus)) {
-            return new \WP_Error('refund_failed', __('Refund could not be processed in Paystack. Please check your Paystack account', 'paytsack-for-fluent-cart'));
+            return new \WP_Error('refund_failed', __('Refund could not be processed in Paystack. Please check your Paystack account', 'paystack-for-fluent-cart'));
         }
 
         return Arr::get($refund, 'data.id');

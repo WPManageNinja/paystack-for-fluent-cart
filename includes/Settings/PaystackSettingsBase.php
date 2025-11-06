@@ -1,10 +1,22 @@
 <?php
+/**
+ * Paystack Settings Base Class
+ *
+ * @package PaystackFluentCart
+ * @since 1.0.0
+ */
+
 
 namespace PaystackFluentCart\Settings;
 
 use FluentCart\Api\StoreSettings;
 use FluentCart\App\Helpers\Helper;
 use FluentCart\App\Modules\PaymentMethods\Core\BaseGatewaySettings;
+
+if (!defined('ABSPATH')) {
+    exit; // Direct access not allowed.
+}
+
 
 class PaystackSettingsBase extends BaseGatewaySettings
 {

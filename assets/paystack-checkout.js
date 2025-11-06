@@ -235,11 +235,12 @@ class PaystackCheckout {
     }
 
     handlePaymentSuccess(transaction) {
-        // call confirm ajax call to backend
+
         const params = new URLSearchParams({
             action: 'fluent_cart_confirm_paystack_payment',
             reference: transaction.reference || transaction.trxref,
             trx_id: transaction.trans || transaction.transaction,
+            paystack_fct_nonce: window.fct_paystack_data?.nonce
         });
 
         const that = this;
@@ -262,8 +263,7 @@ class PaystackCheckout {
                     that.handlePaystackError(error);
                 }
             } else {
-                console.error('Network response was not ok');
-                that.handlePaystackError(new Error('Network error: ' + xhr.status));
+                that.handlePaystackError(new Error(that.$t('Network error: ' + xhr.status)));
             }
         };
 
@@ -301,15 +301,20 @@ class PaystackCheckout {
             }
         }
 
-        // put error message in innerhtml of paystack container
         let paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
-        if (paystackContainer) {
-            paystackContainer.innerHTML = '<div id="fct_loading_payment_processor" style="color:red; display:none; font-size:14px; padding:10px;">' + errorMessage + '</div>';
-            paystackContainer.style.display = 'block';
-        }
+        let tempMessage = this.$t('Something went wrong');
 
+        if (paystackContainer) {            
+            paystackContainer.innerHTML += '<div id="fct_loading_payment_processor">' + this.$t(tempMessage) + '</div>';
+            paystackContainer.style.display = 'block';
+            paystackContainer.querySelector('#fct_loading_payment_processor').style.color = '#dc3545';
+            paystackContainer.querySelector('#fct_loading_payment_processor').style.fontSize = '14px';
+            paystackContainer.querySelector('#fct_loading_payment_processor').style.padding = '10px';
+        }
+         
         this.paymentLoader.hideLoader();
-        this.paymentLoader.enableCheckoutButton(this.submitButton.text);
+        this.paymentLoader?.enableCheckoutButton(this.submitButton?.text || this.$t('Place Order'));
+    
     }
 
 }

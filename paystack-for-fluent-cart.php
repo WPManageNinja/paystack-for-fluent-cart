@@ -10,12 +10,14 @@
  * Domain Path: /languages
  * Requires plugins: fluent-cart
  * Requires at least: 5.6
+ * Tested up to: 6.8
  * Requires PHP: 7.4
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
  */
 
-defined('ABSPATH') or exit;
+// Prevent direct access
+defined('ABSPATH') || exit('Direct access not allowed.');
 
 // Define plugin constants
 define('PAYSTACK_FC_VERSION', '1.0.0');
@@ -24,9 +26,9 @@ define('PAYSTACK_FC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('PAYSTACK_FC_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 
-add_action('plugins_loaded', function() {
-    load_plugin_textdomain('paystack-for-fluent-cart', false, dirname(plugin_basename(__FILE__)) . '/languages');
-});
+// add_action('plugins_loaded', function() {
+//     load_plugin_textdomain('paystack-for-fluent-cart', false, dirname(plugin_basename(__FILE__)) . '/languages');
+// });
 
 
 function paystack_fc_check_dependencies() {
@@ -35,8 +37,8 @@ function paystack_fc_check_dependencies() {
             ?>
             <div class="notice notice-error">
                 <p>
-                    <strong><?php _e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
-                    <?php _e('requires FluentCart to be installed and activated.', 'paystack-for-fluent-cart'); ?>
+                    <strong><?php esc_html_e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
+                    <?php esc_html_e('requires FluentCart to be installed and activated.', 'paystack-for-fluent-cart'); ?>
                 </p>
             </div>
             <?php
@@ -49,8 +51,8 @@ function paystack_fc_check_dependencies() {
             ?>
             <div class="notice notice-error">
                 <p>
-                    <strong><?php _e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
-                    <?php printf(__('requires FluentCart version %s or higher. You have version %s installed.', 'paystack-for-fluent-cart'), '1.2.5', FLUENTCART_VERSION); ?>
+                    <strong><?php esc_html_e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
+                    <?php esc_html_e('requires FluentCart version 1.2.5 or higher', 'paystack-for-fluent-cart'); ?>
                 </p>
             </div>
             <?php
@@ -91,14 +93,57 @@ add_action('plugins_loaded', function() {
 }, 20);
 
 
-register_activation_hook(__FILE__, function() {
+// Activation and deactivation hooks
+register_activation_hook(__FILE__, 'paystack_fc_on_activation');
+register_deactivation_hook(__FILE__, 'paystack_fc_on_deactivation');
+
+/**
+ * Plugin activation callback
+ */
+function paystack_fc_on_activation() {
     if (!paystack_fc_check_dependencies()) {
         deactivate_plugins(plugin_basename(__FILE__));
         wp_die(
-            __('Paystack for FluentCart requires FluentCart to be installed and activated.', 'paystack-for-fluent-cart'),
-            __('Plugin Activation Error', 'paystack-for-fluent-cart'),
+            esc_html__('Paystack for FluentCart requires FluentCart to be installed and activated.', 'paystack-for-fluent-cart'),
+            esc_html__('Plugin Activation Error', 'paystack-for-fluent-cart'),
             ['back_link' => true]
         );
     }
+    
+    // Set default options
+    $default_options = [
+        'paystack_fc_version' => PAYSTACK_FC_VERSION,
+        'paystack_fc_installed_time' => current_time('timestamp'),
+    ];
+    
+    foreach ($default_options as $option => $value) {
+        add_option($option, $value);
+    }
+    
+    // Clear any relevant caches
+    if (function_exists('wp_cache_flush')) {
+        wp_cache_flush();
+    }
+}
+
+/**
+ * Plugin deactivation callback
+ */
+function paystack_fc_on_deactivation() {
+    // Clear transients
+    delete_transient('paystack_fc_api_status');
+    
+    // Clear wp_cache if object caching is enabled
+    if (function_exists('wp_cache_flush_group')) {
+        wp_cache_flush_group('paystack_fc');
+    }
+    
+    // Note: We do not delete options or user data on deactivation
+    // Only on uninstall (handled in uninstall.php)
+}
+
+// Legacy activation hook for backward compatibility
+register_activation_hook(__FILE__, function() {
+    paystack_fc_on_activation();
 });
 

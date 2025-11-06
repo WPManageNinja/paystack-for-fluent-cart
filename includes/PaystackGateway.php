@@ -1,6 +1,17 @@
 <?php
+/**
+ * Paystack Gateway Class
+ *
+ * @package PaystackFluentCart
+ * @since 1.0.0
+ */
+
 
 namespace PaystackFluentCart;
+
+if (!defined('ABSPATH')) {
+    exit; // Direct access not allowed.
+}
 
 use FluentCart\Api\CurrencySettings;
 use FluentCart\App\Helpers\Helper;
@@ -141,7 +152,8 @@ class PaystackGateway extends AbstractPaymentGateway
                     'Processing payment...' => __('Processing payment...', 'paystack-for-fluent-cart'),
                     'Pay Now' => __('Pay Now', 'paystack-for-fluent-cart'),
                     'Place Order' => __('Place Order', 'paystack-for-fluent-cart'),
-                ]
+                ],
+                'nonce' => wp_create_nonce('paystack_fct_nonce')
             ]
         ];
     }

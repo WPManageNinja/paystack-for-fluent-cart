@@ -326,7 +326,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
         if (is_wp_error($payStackSubscription)) {
             // log the error message
-            fluent_cart_add_log(__('Paystack Subscription Creation Failed', 'fluent-cart-pro'), __('Failed to create subscription in Paystack. Error: ', 'fluent-cart-pro')  . $payStackSubscription->get_error_message(), 'error', [
+            fluent_cart_add_log(__('Paystack Subscription Creation Failed', 'paystack-for-fluent-cart'), __('Failed to create subscription in Paystack. Error: ', 'paystack-for-fluent-cart')  . $payStackSubscription->get_error_message(), 'error', [
                 'module_name' => 'order',
                 'module_id'   => $order->id,
             ]);
