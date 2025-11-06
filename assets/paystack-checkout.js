@@ -70,6 +70,9 @@ class PaystackCheckout {
         html += '<div class="fct-paystack-method">';
         html += '<span class="fct-method-name">' + this.$t('QR Code') + '</span>';
         html += '</div>';
+        html += '<div class="fct-paystack-method">';
+        html += '<span class="fct-method-name">' + this.$t('PayAttitude') + '</span>'; 
+        html += '</div>';
         html += '</div>';
         
         html += '</div>';

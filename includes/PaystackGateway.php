@@ -202,10 +202,30 @@ class PaystackGateway extends AbstractPaymentGateway
 
     }
 
+    public function getWebhhoInstructions(): string
+    { 
+        $webhook_url = site_url('?fluent-cart=fct_payment_listener_ipn&method=paystack');
+        $configureLink = 'https://dashboard.paystack.com/#/settings/developers';
+
+        return sprintf(
+            '<div>
+                <p><b>%s</b><code class="copyable-content">%s</code></p>
+                <p>%s</p>
+            </div>',
+            __('Webhook URL: ', 'paystack-for-fluent-cart'),
+            esc_html($webhook_url),
+            sprintf(
+                /* translators: %s: Paystack Developer Settings link */
+                __('Configure this webhook URL in your Paystack Dashboard under Settings > Developers to receive payment notifications. You can access the <a href="%s" target="_blank">%s</a> here.', 'paystack-for-fluent-cart'),
+                esc_url($configureLink),
+                __('Paystack Developer Settings Page', 'paystack-for-fluent-cart')
+            )
+        );
+
+    }
+
     public function fields(): array
     {
-        $webhook_url = site_url('?fluent-cart=fct_payment_listener_ipn&method=paystack');
-        
         return [
             'notice' => [
                 'value' => $this->renderStoreModeNotice(),
@@ -256,12 +276,7 @@ class PaystackGateway extends AbstractPaymentGateway
                 ]
             ],
             'webhook_info' => [
-                'value' => sprintf(
-                    '<div><p><b>%s</b><code class="copyable-content">%s</code></p><p>%s</p></div>',
-                    __('Webhook URL: ', 'paystack-for-fluent-cart'),
-                    $webhook_url,
-                    __('Configure this webhook URL in your Paystack Dashboard under Settings > Webhooks to receive payment notifications.', 'paystack-for-fluent-cart')
-                ),
+                'value' => $this->getWebhhoInstructions(),
                 'label' => __('Webhook Configuration', 'paystack-for-fluent-cart'),
                 'type'  => 'html_attr'
             ],
