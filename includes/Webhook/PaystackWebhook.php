@@ -151,7 +151,7 @@ class PaystackWebhook
         }
 
         // Check if already processed
-        if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED) {
+        if ($transactionModel->status == Status::TRANSACTION_SUCCEEDED) {
             wp_send_json([
                 'redirect_url' => $transactionModel->getReceiptPageUrl(),
                 'order' => [
@@ -213,17 +213,21 @@ class PaystackWebhook
             $this->sendResponse(200, 'No subscription found for the order, skipping subscription creation handling.');
         }
 
+        if (!in_array($subscriptionModel->status, [Status::SUBSCRIPTION_ACTIVE, Status::SUBSCRIPTION_TRIALING])) {
+            $this->sendResponse(200, 'Subscription is already processed, skipping subscription creation handling.');
+        }
+
         $oldStatus = $subscriptionModel->status;
 
 
         $oldStatus = $subscriptionModel->status;
-        $status = PaystackHelper::getFctSubscriptionStatus(Arr::get($paystackSubscription, 'data.status'));
+        $status = PaystackHelper::getFctSubscriptionStatus(Arr::get($paystackSubscription, 'status'));
 
         $updateData = [
-            'vendor_subscription_id' => Arr::get($paystackSubscription, 'data.subscription_code'),
+            'vendor_subscription_id' => Arr::get($paystackSubscription, 'subscription_code'),
             'status'                 => $status,
             'vendor_customer_id'     => Arr::get($paystackSubscription, 'customer.customer_code'),
-            'next_billing_date'      => Arr::get($paystackSubscription, 'data.next_payment_date') ? DateTime::anyTimeToGmt(Arr::get($paystackSubscription, 'data.next_payment_date'))->format('Y-m-d H:i:s') : null,
+            'next_billing_date'      => Arr::get($paystackSubscription, 'next_payment_date') ? DateTime::anyTimeToGmt(Arr::get($paystackSubscription, 'next_payment_date'))->format('Y-m-d H:i:s') : null,
         ];
 
 
@@ -305,6 +309,11 @@ class PaystackWebhook
         }
 
         $subscriptionModel->reSyncFromRemote();
+
+        fluent_cart_add_log(__('Subscription Canceled', 'paystack-for-fluent-cart'), 'Subscription cancellation received from Paystack for subscription code: ' . $paystackSubscriptionCode, 'info', [
+            'module_name' => 'subscription',
+            'module_id'   => $subscriptionModel->id
+        ]);
 
         $this->sendResponse(200, 'Subscription cancellation processed successfully');
 

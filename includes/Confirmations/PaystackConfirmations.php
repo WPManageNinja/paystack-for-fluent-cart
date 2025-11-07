@@ -37,7 +37,7 @@ class PaystackConfirmations
     public function confirmPaystackPayment()
     {
         
-        if (isset($_REQUEST['paystack_fct_nonce'])) {
+        if (isset($_REQUEST['paystack_fc_nonce'])) {
             $nonce = sanitize_text_field(wp_unslash($_REQUEST['paystack_fct_nonce']));
             if (!wp_verify_nonce($nonce, 'paystack_fct_nonce')) {
                 wp_send_json([
@@ -128,13 +128,19 @@ class PaystackConfirmations
                 ->where('uuid', $subscriptionHash)
                 ->first();
 
-            $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
-                'customer_code' => $paystackCustomer,
-                'authorization_code' => $paystackCustomerAuthorization,
-                'plan_code' => $paystackPlan,
-                'billing_info' => $billingInfo,
-                'is_first_payment_only_for_authorization' => Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes'
-            ]);
+            $updatedSubData  = [];
+
+            if (!in_array($subscriptionModel->status, [Status::SUBSCRIPTION_ACTIVE, Status::SUBSCRIPTION_TRIALING])) {
+                $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
+                    'customer_code' => $paystackCustomer,
+                    'authorization_code' => $paystackCustomerAuthorization,
+                    'plan_code' => $paystackPlan,
+                    'billing_info' => $billingInfo,
+                    'is_first_payment_only_for_authorization' => Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes'
+                ]);
+            }
+
+
         }
         
 

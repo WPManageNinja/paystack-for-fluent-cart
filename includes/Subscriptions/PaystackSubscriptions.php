@@ -304,6 +304,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
     {
         $order = $subscriptionModel->order;
         $startDate = null;
+        $oldStatus = $subscriptionModel->status;
 
         // subscribe customer to plan
 
@@ -334,7 +335,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             return [];
         }
 
-        $oldStatus = $subscriptionModel->status;
+        
         $status = PaystackHelper::getFctSubscriptionStatus(Arr::get($payStackSubscription, 'data.status'));
 
         $updateData = [
@@ -354,10 +355,6 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'module_id'   => $order->id
         ]);
 
-        fluent_cart_add_log(__('Paystack Subscription Created', 'paystack-for-fluent-cart'), 'Subscription created on Paystack. Code: ' . Arr::get($payStackSubscription, 'data.subscription_code'), 'info', [
-            'module_name' => 'subscription',
-            'module_id'   => $subscriptionModel->id
-        ]);
 
         if ($oldStatus != $subscriptionModel->status && (Status::SUBSCRIPTION_ACTIVE === $subscriptionModel->status || Status::SUBSCRIPTION_TRIALING === $subscriptionModel->status)) {
             (new SubscriptionActivated($subscriptionModel, $order, $order->customer))->dispatch();
