@@ -47,7 +47,7 @@ This plugin serves as both a production-ready payment gateway and a **comprehens
 
 ### 📚 Integration Documentation
 
-See **[PAYMENT_GATEWAY_INTEGRATION_GUIDE.md](PAYMENT_GATEWAY_INTEGRATION_GUIDE.md)** for a complete guide on building payment gateway integrations for FluentCart, including:
+See **[PAYMENT_GATEWAY_INTEGRATION_GUIDE.md](CUSTOM_PAYMENT_GATEWAY_INTEGRATION_GUIDE.md)** for a complete guide on building payment gateway integrations for FluentCart, including:
 
 - Plugin setup and structure
 - Gateway registration with FluentCart API  
@@ -155,7 +155,4 @@ For issues, questions, or contributions, please contact the plugin author.
 
 GPLv2 or later. See LICENSE file for details.
 
-## Credits
-
-Built for FluentCart by [Your Name]
-
+[Guide to Integrate CustomPayment Gateway with FluentCart](CUSTOM_PAYMENT_GATEWAY_INTEGRATION_GUIDE.md)

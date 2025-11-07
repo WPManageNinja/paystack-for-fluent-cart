@@ -622,6 +622,13 @@ private function handleOnsiteCheckout(PaymentInstance $paymentInstance)
         ];
     }
 
+     // make payment to your gateway and confirm
+    return [
+        'status'       => 'success',
+        'redirect_to'  => $transaction->getReceiptPageUrl(),
+    ]
+
+    // or if you have custom js file to handle payment
     return [
         'status'       => 'success',
         'message'      => __('Please complete your payment details', 'your-gateway-for-fluent-cart'),
@@ -653,6 +660,13 @@ private function handlePopupCheckout(PaymentInstance $paymentInstance)
         'transaction_id' => $transaction->id,
     ];
 
+    // make payment to your gateway and confirm
+    return [
+        'status'       => 'success',
+        'redirect_to'  => $transaction->getReceiptPageUrl(),
+    ]
+
+    // or if you have custom js file to handle payment
     return [
         'status'       => 'success',
         'message'      => __('Opening payment modal...', 'your-gateway-for-fluent-cart'),
@@ -855,7 +869,7 @@ class PaymentConfirmations
         add_action('wp_ajax_nopriv_your_gateway_confirm_payment', [$this, 'confirmPayment']);
         
         // Handle redirect to fluent-cart thank you page confirmations
-        add_action('fluent_cart/before_render_redirect_page', [$this, 'handleRedirectConfirmation'], 10, 2);
+        add_action('fluent_cart/before_render_redirect_page', [$this, 'handleRedirectConfirmation'], 10, 1);
     }
 
     public function confirmPayment()
@@ -890,30 +904,13 @@ class PaymentConfirmations
         wp_send_json_error(['message' => 'Transaction not found']);
     }
 
-    /**
-     * Get the success redirect URL after payment confirmation
-     * This is where customers will be redirected after successful payment
-     */
-    private function getSuccessRedirectUrl($transaction)
+    public function handleRedirectConfirmation($data)
     {
-        // Get the default receipt page URL from transaction
-        $receiptUrl = $transaction->getReceiptPageUrl();
-        
-        // getReceiptPageUrl is a filterable function that returns the default receipt page URL
-
-        // filter is fluentcart/transaction/receipt_page_url
-        
-    }
-
-    public function handleRedirectConfirmation($data, $transaction)
-    {
-        if ($transaction->payment_method !== 'your_gateway') {
-            return;
-        }
-
         // Check if payment was successful based on URL parameters
         $payment_id = $_GET['payment_id'] ?? null;
         $status = $_GET['status'] ?? null;
+
+        $transaction = OrderTransaction::where('vendor_transaction_id', $payment_id)->first();
 
         if ($payment_id && $status === 'success') {
             // Verify payment with your gateway
@@ -924,11 +921,26 @@ class PaymentConfirmations
             }
         }
 
-        $redirectUrl = $transaction->getReceiptPageUrl(); // 'fluent_cart/get_receipt_page_url' fiterable
+      
         wp_send_json_success([
             'message' => 'Payment confirmed successfully',
-            'redirect_url' => $transaction->getReceiptPageUrl()
+            'redirect_url' => $this->getSuccessRedirectUrl($transaction)
         ]);
+    }
+
+     /**
+     * Get the success redirect URL after payment confirmation
+     * This is where customers will be redirected after successful payment
+     */
+    private function getSuccessRedirectUrl($transaction)
+    {
+        // Get the default receipt page URL from transaction
+        $receiptUrl = $transaction->getReceiptPageUrl();
+        
+        // getReceiptPageUrl is a filterable function that returns the default receipt page URL
+
+        // filter is 'fluentcart/transaction/receipt_page_url
+        
     }
 
     private function updateTransactionStatus($transaction, $paymentData)
