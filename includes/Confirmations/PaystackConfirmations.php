@@ -37,7 +37,7 @@ class PaystackConfirmations
     public function confirmPaystackPayment()
     {
         
-        if (isset($_REQUEST['paystack_fc_nonce'])) {
+        if (isset($_REQUEST['paystack_fct_nonce'])) {
             $nonce = sanitize_text_field(wp_unslash($_REQUEST['paystack_fct_nonce']));
             if (!wp_verify_nonce($nonce, 'paystack_fct_nonce')) {
                 wp_send_json([
