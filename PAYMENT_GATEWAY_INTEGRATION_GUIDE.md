@@ -389,6 +389,7 @@ Based on the Renderer.vue file, these field types are supported:
 - `webhook_info` - Webhook configuration display
 - `input` - Text input
 - `password` - Password input
+- `number` - Number input
 - `email` - Email input
 - `text` - Text input
 - `color` - Color picker
@@ -400,6 +401,19 @@ Based on the Renderer.vue file, these field types are supported:
 - `radio-select-dependants` - Radio with dependent fields
 
 ---
+
+All field types support these common properties:
+
+| Property | Description |
+|----------|-------------|
+| `type` | Required. Defines the field type (see available types below) |
+| `label` | The field label displayed to the user |
+| `value` | Default value for the field |
+| `placeholder` | Placeholder text for input fields |
+| `tooltip` | Brief tooltip displayed on hover |
+| `description` | Brief description displayed below the field |
+| `max_length` | Maximum length of the text/input/password field |
+| `disabled` | Whether the field is disabled (boolean) |
 
 ## Payment Method Rendering
 
@@ -1404,8 +1418,7 @@ This guide covers everything you need to create a comprehensive payment gateway 
 
 1. Study the existing Paystack implementation in this plugin
 2. Check the Paddle implementation in FluentCart Pro for onsite payment examples
-3. Refer to the [official FluentCart payment methods integration documentation](https://dev.fluentcart.com/payment-methods-integration/) for additional technical details
-4. Refer to the custom payment method documentation for additional details
-5. Test your implementation thoroughly before releasing
+3. Refer to the custom payment method documentation for additional details [here](https://dev.fluentcart.com/payment-methods-integration/custom-payment-methods/)
+4. Test your implementation thoroughly before releasing
 
 For more examples and advanced features, examine the existing payment gateway implementations in the FluentCart codebase.

@@ -46,7 +46,7 @@ Accept payments via Paystack in FluentCart - supports one-time payments, subscri
 
 * WordPress 5.6 or higher
 * PHP 7.4 or higher
-* FluentCart plugin (free or pro)
+* FluentCart plugin (free)
 * SSL certificate (required for live payments)
 * Paystack merchant account ([Sign up for free](https://paystack.com))
 
@@ -109,7 +109,7 @@ Ensure your website's privacy policy includes disclosure of data sharing with Pa
 2. Get your API keys from [Paystack Dashboard](https://dashboard.paystack.com/#/settings/developer)
 3. Go to FluentCart → Settings → Payment Methods
 4. Find "Paystack" and click to configure
-5. Enter your test/live public and secret keys
+5. Enter your test/live api keys
 6. Configure webhook URL: `https://yourdomain.com/?fluent-cart=fct_payment_listener_ipn&method=paystack`
 7. Save your settings and test with a small transaction
 
@@ -150,22 +150,23 @@ Currently supported: NGN (Nigerian Naira), GHS (Ghanaian Cedi), ZAR (South Afric
 Yes, SSL is required for live payment processing. Most hosting providers offer free SSL certificates through Let's Encrypt.
 
 == Screenshots ==
-
-1. Easy configuration in FluentCart settings
-2. Seamless checkout experience for customers  
-3. Transaction management in WordPress dashboard
-4. Paystack dashboard integration
+1. Payment method list in FluentCart settings
+2. Easy configuration in FluentCart settings
+3. Rendered on checkout page
+4. Seamless checkout experience for customers  
+5. Payment confirmation
+6. Order details in WordPress dashboard
 
 == Changelog ==
 
 = 1.0.0 =
 * Initial release
 * Support for one-time payments
+* Subscription payments foundation
 * Webhook integration for automatic order updates
 * Refund processing capabilities
 * Test and live mode support
 * Multi-currency support (NGN, GHS, ZAR, USD)
-* Subscription payments foundation
 * Security enhancements and input validation
 * WordPress.org compliance improvements
 
@@ -177,7 +178,6 @@ Initial release of Paystack for FluentCart. Install now to start accepting payme
 == Support ==
 
 For support, please visit:
-* [Plugin Documentation](https://fluentcart.com/docs/paystack)
 * [FluentCart Support](https://fluentcart.com/support)
 * [WordPress.org Support Forum](https://wordpress.org/support/plugin/paystack-for-fluent-cart)
 

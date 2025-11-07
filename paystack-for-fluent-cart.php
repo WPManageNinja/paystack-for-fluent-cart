@@ -26,11 +26,6 @@ define('PAYSTACK_FC_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('PAYSTACK_FC_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 
-// add_action('plugins_loaded', function() {
-//     load_plugin_textdomain('paystack-for-fluent-cart', false, dirname(plugin_basename(__FILE__)) . '/languages');
-// });
-
-
 function paystack_fc_check_dependencies() {
     if (!defined('FLUENTCART_VERSION')) {
         add_action('admin_notices', function() {

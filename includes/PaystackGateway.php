@@ -216,7 +216,7 @@ class PaystackGateway extends AbstractPaymentGateway
             esc_html($webhook_url),
             sprintf(
                 /* translators: %s: Paystack Developer Settings link */
-                __('Configure this webhook URL in your Paystack Dashboard under Settings > Developers to receive payment notifications. You can access the <a href="%s" target="_blank">%s</a> here.', 'paystack-for-fluent-cart'),
+                __('Configure this webhook URL in your Paystack Dashboard under Settings > Developers to receive payment notifications. You can access the <a href="%1$s" target="_blank">%2$s</a> here.', 'paystack-for-fluent-cart'),
                 esc_url($configureLink),
                 __('Paystack Developer Settings Page', 'paystack-for-fluent-cart')
             )
