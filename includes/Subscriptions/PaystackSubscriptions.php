@@ -223,6 +223,9 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             return Arr::get($transaction, 'authorization.authorization_code') === $authorizationCode;
         });
 
+        $subscriptionTransactions = array_reverse($subscriptionTransactions);
+
+
         $newPayment = false;
         foreach($subscriptionTransactions as $payment){
             $vendorChargeId = Arr::get($payment, 'id');
