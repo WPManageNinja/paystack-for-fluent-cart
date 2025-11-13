@@ -54,6 +54,7 @@ class PaystackGateway extends AbstractPaymentGateway
             'admin_title'        => 'Paystack',
             'description'        => __('Pay securely with Paystack - Card, Bank Transfer, USSD, and more', 'paystack-for-fluent-cart'),
             'logo'               => $logo,
+            'tag' => 'beta',
             'icon'               => $logo,
             'brand_color'        => '#00C3F7',
             'status'             => $this->settings->get('is_active') === 'yes',
