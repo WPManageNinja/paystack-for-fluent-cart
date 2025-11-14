@@ -8,7 +8,6 @@
  * Author URI: https://fluentcart.com
  * Text Domain: paystack-for-fluent-cart
  * Domain Path: /languages
- * Requires plugins: fluent-cart
  * Requires at least: 5.6
  * Tested up to: 6.8
  * Requires PHP: 7.4
