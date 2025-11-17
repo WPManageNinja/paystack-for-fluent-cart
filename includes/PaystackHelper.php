@@ -35,10 +35,12 @@ class PaystackHelper
     public static function mapIntervalToPaystack($interval)
     {
         $intervalMaps = [
-            'daily'   => 'daily',
-            'weekly'  => 'weekly',
-            'monthly' => 'monthly',
-            'yearly'  => 'annually',
+            'daily'       => 'daily',
+            'weekly'      => 'weekly',
+            'monthly'     => 'monthly',
+            'quarterly'   => 'quarterly',
+            'half_yearly' => 'biannually',
+            'yearly'      => 'annually',
         ];
 
         return $intervalMaps[$interval] ?? 'monthly';
