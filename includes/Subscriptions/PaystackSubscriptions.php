@@ -103,6 +103,15 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
         $interval = PaystackHelper::mapIntervalToPaystack($subscription->billing_interval);
 
+        $billingPeriod = [
+            'interval_unit' => $interval
+        ];
+
+        $billingPeriod = apply_filters('fluent_cart/subscription_billing_period', $billingPeriod, [
+            'subscription_interval' => $subscription->billing_interval,
+            'payment_method' => 'paystack',
+        ]);
+
         $fctPaystackPlanId = 'fct_paystack_recurring_plan_'
             . $order->mode . '_'
             . $product->id . '_'
@@ -118,7 +127,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'name'              => $subscription->item_name,
             'description'       => $fctPaystackPlanId,   
             'amount'            => (int)($subscription->recurring_total),
-            'interval'          => $interval,
+            'interval'          => Arr::get($billingPeriod, 'interval_unit'),
             'send_invoices'    => apply_filters('fluent_cart/paystack/send_invoices_for_subscription_plan', true, [
                 'subscription' => $subscription,
                 'order'        => $order,
