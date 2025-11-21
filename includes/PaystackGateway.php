@@ -13,7 +13,6 @@ if (!defined('ABSPATH')) {
     exit; // Direct access not allowed.
 }
 
-use FluentCart\Api\CurrencySettings;
 use FluentCart\App\Helpers\Helper;
 use FluentCart\App\Helpers\Status;
 use FluentCart\Framework\Support\Arr;
@@ -89,39 +88,20 @@ class PaystackGateway extends AbstractPaymentGateway
 
     public function getOrderInfo($data)
     {
-        $this->checkCurrencySupport();
+        PaystackHelper::checkCurrencySupport();
 
         $publicKey = (new Settings\PaystackSettingsBase())->getPublicKey();
 
         wp_send_json([
             'status'       => 'success',
             'message'      => __('Order info retrieved!', 'paystack-for-fluent-cart'),
-            'intent'         => [
-                'amount' => 12900,
-                'currency' => 'NGN'
-            ],
             'payment_args' => [
                 'public_key' => $publicKey
+
             ],
         ], 200);
     }
 
-    public function checkCurrencySupport()
-    {
-        $currency = CurrencySettings::get('currency');
-
-        if (!in_array(strtoupper($currency), self::getPaystackSupportedCurrency())) {
-            wp_send_json([
-                'status'  => 'failed',
-                'message' => __('Paystack does not support the currency you are using!', 'paystack-for-fluent-cart')
-            ], 422);
-        }
-    }
-
-    public static function getPaystackSupportedCurrency(): array
-    {
-        return ['NGN', 'GHS', 'ZAR', 'USD'];
-    }
 
     public function handleIPN(): void
     {

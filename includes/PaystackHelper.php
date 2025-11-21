@@ -9,6 +9,7 @@ use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\SubscriptionMeta;
 use FluentCart\App\Models\Subscription;
+use FluentCart\Api\CurrencySettings;
 
 class PaystackHelper
 {
@@ -134,5 +135,24 @@ class PaystackHelper
         }
 
         return $subscriptionUpdateData;
+    }
+
+
+    public static function checkCurrencySupport()
+    {
+        $currency = CurrencySettings::get('currency');
+
+        if (!in_array(strtoupper($currency), self::getPaystackSupportedCurrency())) {
+            wp_send_json([
+                'status'  => 'failed',
+                'message' => __('Paystack does not support the currency you are using!', 'paystack-for-fluent-cart')
+            ], 422);
+        }
+
+    }
+
+    public static function getPaystackSupportedCurrency(): array
+    {
+        return ['NGN', 'GHS', 'ZAR', 'USD', 'XOF', 'KES'];
     }
 }

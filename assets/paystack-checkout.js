@@ -351,7 +351,9 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
     function displayErrorMessage(message) {
         const errorDiv = document.createElement('div');
         errorDiv.style.color = 'red';
-        errorDiv.className = 'fc-error-message';
+        errorDiv.style.padding = '10px';
+        errorDiv.style.fontSize = '14px';
+        errorDiv.className = 'fct-error-message';
         errorDiv.textContent = message;
 
         const paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
