@@ -65,7 +65,7 @@ add_action('plugins_loaded', function() {
 
     spl_autoload_register(function ($class) {
         $prefix = 'PaystackFluentCart\\';
-        $base_dir = PAYSTACK_FC_PLUGIN_DIR . 'includes/';
+        $base_dir = PAYSTACK_FCT_PLUGIN_DIR . 'includes/';
 
         $len = strlen($prefix);
         if (strncmp($prefix, $class, $len) !== 0) {
