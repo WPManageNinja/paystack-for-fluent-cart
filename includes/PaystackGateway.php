@@ -25,6 +25,8 @@ use PaystackFluentCart\Refund\PaystackRefund;
 class PaystackGateway extends AbstractPaymentGateway
 {
     private $methodSlug = 'paystack';
+    private $addonSlug = 'paystack-for-fluent-cart';
+    private $addonFile = 'paystack-for-fluent-cart/paystack-for-fluent-cart.php';
 
     public array $supportedFeatures = [
         'payment',
@@ -58,6 +60,13 @@ class PaystackGateway extends AbstractPaymentGateway
             'brand_color'        => '#00C3F7',
             'status'             => $this->settings->get('is_active') === 'yes',
             'upcoming'           => false,
+            'is_addon'           => true,
+            'addon_source'       => [
+                'type' => 'github',
+                'link' => 'https://github.com/WPManageNinja/paystack-for-fluent-cart/releases/latest',
+                'slug' => $this->addonSlug,
+                'file' => $this->addonFile
+            ],
             'supported_features' => $this->supportedFeatures,
         ];
     }
