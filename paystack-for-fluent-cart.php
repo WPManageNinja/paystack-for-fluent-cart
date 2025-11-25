@@ -3,7 +3,7 @@
  * Plugin Name: Paystack for FluentCart
  * Plugin URI: https://fluentcart.com
  * Description: Accept payments via Paystack in FluentCart - supports one-time payments, subscriptions, and automatic refunds via webhooks.
- * Version: 1.0.1
+ * Version: 1.0.3
  * Author: FluentCart
  * Author URI: https://fluentcart.com
  * Text Domain: paystack-for-fluent-cart
@@ -19,10 +19,10 @@
 defined('ABSPATH') || exit('Direct access not allowed.');
 
 // Define plugin constants
-define('PAYSTACK_FC_VERSION', '1.0.1');
-define('PAYSTACK_FC_PLUGIN_FILE', __FILE__);
-define('PAYSTACK_FC_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('PAYSTACK_FC_PLUGIN_URL', plugin_dir_url(__FILE__));
+define('PAYSTACK_FCT_VERSION', '1.0.3');
+define('PAYSTACK_FCT_PLUGIN_FILE', __FILE__);
+define('PAYSTACK_FCT_PLUGIN_DIR', plugin_dir_path(__FILE__));
+define('PAYSTACK_FCT_PLUGIN_URL', plugin_dir_url(__FILE__));
 
 
 function paystack_fc_check_dependencies() {
@@ -106,8 +106,8 @@ function paystack_fc_on_activation() {
     
     // Set default options
     $default_options = [
-        'paystack_fc_version' => PAYSTACK_FC_VERSION,
-        'paystack_fc_installed_time' => current_time('timestamp'),
+        'PAYSTACK_FCT_VERSION' => PAYSTACK_FCT_VERSION,
+        'paystack_fct_installed_time' => current_time('timestamp'),
     ];
     
     foreach ($default_options as $option => $value) {

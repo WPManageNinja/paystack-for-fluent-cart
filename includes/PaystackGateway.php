@@ -123,7 +123,7 @@ class PaystackGateway extends AbstractPaymentGateway
             [
                 'handle' => 'paystack-fluent-cart-checkout-handler',
                 'src'    => PAYSTACK_FC_PLUGIN_URL . 'assets/paystack-checkout.js',
-                'version' => PAYSTACK_FC_VERSION
+                'version' => PAYSTACK_FCT_VERSION
             ]
         ];
     }
