@@ -45,7 +45,7 @@ class PaystackGateway extends AbstractPaymentGateway
 
     public function meta(): array
     {
-        $logo = PAYSTACK_FC_PLUGIN_URL . 'assets/images/paystack-logo.svg';
+        $logo = PAYSTACK_FCT_PLUGIN_URL . 'assets/images/paystack-logo.svg';
         
         return [
             'title'              => __('Paystack', 'paystack-for-fluent-cart'),
@@ -122,7 +122,7 @@ class PaystackGateway extends AbstractPaymentGateway
         return [
             [
                 'handle' => 'paystack-fluent-cart-checkout-handler',
-                'src'    => PAYSTACK_FC_PLUGIN_URL . 'assets/paystack-checkout.js',
+                'src'    => PAYSTACK_FCT_PLUGIN_URL . 'assets/paystack-checkout.js',
                 'version' => PAYSTACK_FCT_VERSION
             ]
         ];
