@@ -1,9 +1,9 @@
 === Paystack for FluentCart ===
 Tags: paystack, fluentcart, nigeria, ghana, south africa
 Requires at least: 5.6
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.3
+Stable tag: 1.0.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 Contributors: hasanuzzamanshamim, akmelias
@@ -158,6 +158,9 @@ Yes, SSL is required for live payment processing. Most hosting providers offer f
 6. Order details in WordPress dashboard
 
 == Changelog ==
+
+= 1.0.4 =
+* Improve payment confirmation flow
 
 = 1.0.0 =
 * Initial release
