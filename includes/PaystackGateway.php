@@ -65,7 +65,8 @@ class PaystackGateway extends AbstractPaymentGateway
                 'type' => 'github',
                 'link' => 'https://github.com/WPManageNinja/paystack-for-fluent-cart/releases/latest',
                 'slug' => $this->addonSlug,
-                'file' => $this->addonFile
+                'file' => $this->addonFile,
+                'is_installed' => true
             ],
             'supported_features' => $this->supportedFeatures,
         ];
