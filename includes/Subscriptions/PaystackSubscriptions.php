@@ -312,7 +312,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
      * @param Subscription $subscriptionModel
      * @param array $args , expects 'customer_code', 'plan_code', 'authorization_code', 'billingInfo'
      */
-    public function createSubscriptionOnPaytsack($subscriptionModel, $args = [])
+    public function createSubscriptionOnPayStack($subscriptionModel, $args = [])
     {
         $order = $subscriptionModel->order;
         $startDate = null;

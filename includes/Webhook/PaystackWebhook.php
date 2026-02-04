@@ -178,7 +178,7 @@ class PaystackWebhook
         ];
 
         if ($paystackPlan) {
-            $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
+            $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPayStack( $subscriptionModel, [
                 'customer_code' => $paystackCustomer,
                 'authorization_code' => $paystackCustomerAuthorization,
                 'plan_code' => $paystackPlan,

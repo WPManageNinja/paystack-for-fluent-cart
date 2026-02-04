@@ -40,24 +40,15 @@ class PaystackConfirmations
         if (isset($_REQUEST['paystack_fct_nonce'])) {
             $nonce = sanitize_text_field(wp_unslash($_REQUEST['paystack_fct_nonce']));
             if (!wp_verify_nonce($nonce, 'paystack_fct_nonce')) {
-                wp_send_json([
-                    'message' => 'Invalid nonce. Please refresh the page and try again.',
-                    'status' => 'failed'
-                ], 400);
+                $this->confirmationFailed(400);
             }
         } else {
-            wp_send_json([
-                'message' => 'Nonce is required for security verification.',
-                'status' => 'failed'
-            ], 400);
+            $this->confirmationFailed(400);
         }
         
 
         if (!isset($_REQUEST['trx_id'])) {
-            wp_send_json([
-                'message' => 'Transaction ID is required to confirm the payment.',
-                'status' => 'failed'
-            ], 400);
+            $this->confirmationFailed(400);
         }
 
         $paystackTransactionId = sanitize_text_field(wp_unslash($_REQUEST['trx_id']) ?? '');
@@ -65,44 +56,37 @@ class PaystackConfirmations
         // get the transaction from paystack using the reference
         $paystackTransaction = PaystackAPI::getPaystackObject('transaction/' . $paystackTransactionId);
 
-        if (is_wp_error($paystackTransaction) || Arr::get($paystackTransaction, 'status') !== true) {
-            wp_send_json([
-                'message' => $paystackTransaction->get_error_message(),
-                'status' => 'failed'
-            ], 500);
+        if (is_wp_error($paystackTransaction)) {
+            $this->confirmationFailed(500);
+        }
+
+        if (Arr::get($paystackTransaction, 'status') !== true) {
+            $this->confirmationFailed(404);
         }
 
         $transactionMeta = Arr::get($paystackTransaction, 'data.metadata', []);
         $transactionHash = Arr::get($transactionMeta, 'transaction_hash', '');
 
-        // Find the transaction by UUID
-        $transactionModel = null;
-
-        if ($transactionHash) {
-            $transactionModel = OrderTransaction::query()
-                ->where('uuid', $transactionHash)
-                ->where('payment_method', 'paystack')
-                ->first();
+        if (empty($transactionHash)) {
+            $this->confirmationFailed(404);
         }
 
+        // Find the transaction by UUID
+        $transactionModel = null;
+        $transactionModel = OrderTransaction::query()
+            ->where('uuid', $transactionHash)
+            ->where('payment_method', 'paystack')
+            ->first();
+
+
         if (!$transactionModel) {
-            wp_send_json([
-                'message' => 'Transaction not found for the provided reference.',
-                'status' => 'failed'
-            ], 404);
+            $this->confirmationFailed(404);
         }
 
   
         // Check if already processed
         if ($transactionModel->status === Status::TRANSACTION_SUCCEEDED) {
-            wp_send_json([
-                'redirect_url' => $transactionModel->getReceiptPageUrl(),
-                'order' => [
-                    'uuid' => $transactionModel->order->uuid,
-                ],
-                'message' => __('Payment already confirmed. Redirecting...!', 'paystack-for-fluent-cart'),
-                'status' => 'success'
-            ], 200);
+            $this->confirmationSuccess($transactionModel);
         }
 
         $data = Arr::get($paystackTransaction, 'data');
@@ -110,8 +94,8 @@ class PaystackConfirmations
 
         $paystackPlan = Arr::get($transactionMeta, 'paystack_plan', '');
         $subscriptionHash = Arr::get($transactionMeta, 'subscription_hash', '');
-        $paystackCustomer = Arr::get($data, 'customer.customer_code', []);
-        $paystackCustomerAuthorization = Arr::get($data, 'authorization.authorization_code', []);
+        $paystackCustomerCode = Arr::get($data, 'customer.customer_code', '');
+        $paystackCustomerAuthorizationCode = Arr::get($data, 'authorization.authorization_code', '');
 
         $billingInfo = [
             'type' => Arr::get($data, 'authorization.payment_type', 'card'),
@@ -130,16 +114,16 @@ class PaystackConfirmations
 
             $updatedSubData  = [];
 
-            if (!in_array($subscriptionModel->status, [Status::SUBSCRIPTION_ACTIVE, Status::SUBSCRIPTION_TRIALING])) {
-                $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPaytsack( $subscriptionModel, [
-                    'customer_code' => $paystackCustomer,
-                    'authorization_code' => $paystackCustomerAuthorization,
+            if ($subscriptionModel && !in_array($subscriptionModel->status, [Status::SUBSCRIPTION_ACTIVE, Status::SUBSCRIPTION_TRIALING])) {
+                $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPayStack( $subscriptionModel, [
+                    'customer_code' => $paystackCustomerCode,
+                    'authorization_code' => $paystackCustomerAuthorizationCode,
                     'plan_code' => $paystackPlan,
                     'billing_info' => $billingInfo,
                     'is_first_payment_only_for_authorization' => Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes'
                 ]);
-            }
 
+            }
 
         }
         
@@ -151,18 +135,7 @@ class PaystackConfirmations
             'billing_info' => $billingInfo
         ]);
 
-        wp_send_json([
-            'redirect_url' => $transactionModel->getReceiptPageUrl(),
-            'order' => [
-                'uuid' => $transactionModel->order->uuid,
-            ],
-            'message' => __('Payment confirmed successfully. Redirecting...!', 'paystack-for-fluent-cart'),
-            'status' => 'success'
-        ], 200);
-    }
-
-    public function maybeConfirmPaymentOnReturn($data){
-        return;
+        $this->confirmationSuccess($transactionModel);
     }
 
     /**
@@ -200,7 +173,7 @@ class PaystackConfirmations
             'card_brand' => Arr::get($billingInfo, 'brand', ''),
             'payment_method_type' => Arr::get($billingInfo, 'payment_method_type', ''),
             'vendor_charge_id' => $vendorChargeId,
-            'meta' => array_merge($transaction->meta ?? [], $billingInfo)
+            'meta' => array_merge($transactionModel->meta ?? [], $billingInfo)
         ]);
 
         $transactionModel->fill($transactionUpdateData);
@@ -212,7 +185,7 @@ class PaystackConfirmations
         ]);
 
         // refund the amount if it was just for authorization
-        if (Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') == 'yes') {
+        if (Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes') {
             // refund the amount as it was just for authorization
             $response = (new PaystackRefund())->refundMinimumAuthorizationAmount($transactionModel);
 
@@ -224,7 +197,7 @@ class PaystackConfirmations
             }
         }
 
-        if ($order->type == status::ORDER_TYPE_RENEWAL) {
+        if ($order->type == Status::ORDER_TYPE_RENEWAL) {
             $subscriptionModel = Subscription::query()->where('id', $transactionModel->subscription_id)->first();
 
 
@@ -238,6 +211,26 @@ class PaystackConfirmations
         }
 
         return (new StatusHelper($order))->syncOrderStatuses($transactionModel);
+    }
+
+    public function confirmationSuccess(OrderTransaction $transactionModel)
+    {
+        wp_send_json([
+            'redirect_url' => $transactionModel->getReceiptPageUrl(),
+            'order' => [
+                'uuid' => $transactionModel->order->uuid,
+            ],
+            'message' => __('Payment confirmed successfully. Redirecting...!', 'paystack-for-fluent-cart'),
+            'status' => 'success'
+        ]);
+    }
+
+    public function confirmationFailed($code = 422)
+    {
+        wp_send_json([
+            'message' => __('Payment confirmation failed', 'paystack-for-fluent-cart'),
+            'status' => 'failed'
+        ], $code);
     }
 }
 
