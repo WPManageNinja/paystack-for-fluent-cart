@@ -84,6 +84,39 @@ add_action('plugins_loaded', function() {
         \PaystackFluentCart\PaystackGateway::register();
     }, 10);
 
+    /**
+     * Plugin Updater
+     */
+    $apiUrl = 'https://api.fluentcart.com/wp-admin/admin-ajax.php?action=fluent_cart_paystack_update&time=' . time();
+    new \PaystackFluentCart\PluginManager\Updater($apiUrl, PAYSTACK_FCT_PLUGIN_FILE, array(
+        'version'   => PAYSTACK_FCT_VERSION,
+        'license'   => '12345',
+        'item_name' => 'Paystack for FluentCart',
+        'item_id'   => '105',
+        'author'    => 'wpmanageninja'
+    ),
+        array(
+            'license_status' => 'valid',
+            'admin_page_url' => admin_url('admin.php?page=fluent-cart#/'),
+            'purchase_url'   => 'https://fluentcart.com',
+            'plugin_title'   => 'Paystack for FluentCart'
+        )
+    );
+
+    add_filter('plugin_row_meta', function ($links, $pluginFile) {
+        if (plugin_basename(PAYSTACK_FCT_PLUGIN_FILE) !== $pluginFile) {
+            return $links;
+        }
+
+        $checkUpdateUrl = esc_url(admin_url('plugins.php?paystack-for-fluent-cart-check-update=' . time()));
+
+        $row_meta = array(
+            'check_update' => '<a style="color: #583fad;font-weight: 600;" href="' . $checkUpdateUrl . '" aria-label="' . esc_attr__('Check Update', 'paystack-for-fluent-cart') . '">' . esc_html__('Check Update', 'paystack-for-fluent-cart') . '</a>',
+        );
+
+        return array_merge($links, $row_meta);
+    }, 10, 2);
+
 }, 20);
 
 
