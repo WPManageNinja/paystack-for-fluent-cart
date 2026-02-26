@@ -3,7 +3,7 @@
  * Plugin Name: Paystack for FluentCart
  * Plugin URI: https://fluentcart.com
  * Description: Accept payments via Paystack in FluentCart - supports one-time payments, subscriptions, and automatic refunds via webhooks.
- * Version: 1.0.4
+ * Version: 1.0.5
  * Author: FluentCart
  * Author URI: https://fluentcart.com
  * Text Domain: paystack-for-fluent-cart
@@ -19,7 +19,7 @@
 defined('ABSPATH') || exit('Direct access not allowed.');
 
 // Define plugin constants
-define('PAYSTACK_FCT_VERSION', '1.0.4');
+define('PAYSTACK_FCT_VERSION', '1.0.5');
 define('PAYSTACK_FCT_PLUGIN_FILE', __FILE__);
 define('PAYSTACK_FCT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('PAYSTACK_FCT_PLUGIN_URL', plugin_dir_url(__FILE__));
