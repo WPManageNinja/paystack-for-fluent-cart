@@ -1,5 +1,7 @@
 # Paystack for FluentCart
 
+[![Download Latest](https://img.shields.io/badge/Download-Latest-blue?style=for-the-badge&logo=github)](https://github.com/WPManageNinja/paystack-for-fluent-cart/releases/latest/download/paystack-for-fluent-cart.zip)
+
 A WordPress plugin that integrates Paystack payment gateway with FluentCart.
 
 ## Features
