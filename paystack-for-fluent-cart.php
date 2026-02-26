@@ -87,12 +87,12 @@ add_action('plugins_loaded', function() {
     /**
      * Plugin Updater
      */
-    $apiUrl = 'https://fluentcart.com/wp-admin/admin-ajax.php?action=fluent_cart_addon_update&time=' . time();
+    $apiUrl = 'https://fluentcart.com/wp-admin/admin-ajax.php?action=fluent_cart_paystack_update&time=' . time();
     new \PaystackFluentCart\PluginManager\Updater($apiUrl, PAYSTACK_FCT_PLUGIN_FILE, array(
         'version'   => PAYSTACK_FCT_VERSION,
-        'license'   => '',
+        'license'   => '12345',
         'item_name' => 'Paystack for FluentCart',
-        'item_id'   => 'paystack-for-fluent-cart',
+        'item_id'   => '105',
         'author'    => 'wpmanageninja'
     ),
         array(
