@@ -156,7 +156,7 @@ class PaystackCheckout {
 
     loadPaystackScript() {
         return new Promise((resolve, reject) => {
-            if (typeof PaystackPop !== 'undefined') {
+            if (typeof PaystackPop === 'function') {
                 resolve();
                 return;
             }
@@ -185,8 +185,6 @@ class PaystackCheckout {
 
         try {
             const popup = new PaystackPop();
-            
-            // Setup event listeners for Paystack transaction lifecycle
             popup.resumeTransaction(access_code, {
                 onSuccess: (transaction) => {
                     this.handlePaymentSuccess(transaction);
@@ -198,7 +196,6 @@ class PaystackCheckout {
                     this.handlePaystackError(error);
                 }
             });
-            
         } catch (error) {
             console.error('Error resuming Paystack popup:', error);
             this.handlePaystackError(error);
@@ -216,11 +213,8 @@ class PaystackCheckout {
 
         try {
             const popup = new PaystackPop();
-            
-            // Setup event listeners for Paystack subscription payment
             popup.resumeTransaction(access_code, {
                 onSuccess: (transaction) => {
-                    console.log('sucess: ', transaction)
                     this.handlePaymentSuccess(transaction);
                 },
                 onCancel: () => {
@@ -230,7 +224,6 @@ class PaystackCheckout {
                     this.handlePaystackError(error);
                 }
             });
-            
         } catch (error) {
             console.error('Error resuming Paystack subscription popup:', error);
             this.handlePaystackError(error);
