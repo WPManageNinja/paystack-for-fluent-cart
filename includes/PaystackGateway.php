@@ -193,25 +193,34 @@ class PaystackGateway extends AbstractPaymentGateway
 
     }
 
-    public function getWebhhoInstructions(): string
+    public function getWebhookInstructions(): array
     { 
         $webhook_url = site_url('?fluent-cart=fct_payment_listener_ipn&method=paystack');
         $configureLink = 'https://dashboard.paystack.com/#/settings/developers';
+        
+        $svg    = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M10 6V8H5V19H16V14H18V20C18 20.5523 17.5523 21 17 21H4C3.44772 21 3 20.5523 3 20V7C3 6.44772 3.44772 6 4 6H10ZM21 3V11H19L18.9999 6.413L11.2071 14.2071L9.79289 12.7929L17.5849 5H13V3H21Z"></path></svg>';
 
-        return sprintf(
-            '<div>
-                <p><b>%s</b><code class="copyable-content">%s</code></p>
-                <p>%s</p>
-            </div>',
-            __('Webhook URL: ', 'paystack-for-fluent-cart'),
-            esc_html($webhook_url),
-            sprintf(
-                /* translators: %s: Paystack Developer Settings link */
-                __('Configure this webhook URL in your Paystack Dashboard under Settings > Developers to receive payment notifications. You can access the <a href="%1$s" target="_blank">%2$s</a> here.', 'paystack-for-fluent-cart'),
-                esc_url($configureLink),
-                __('Paystack Developer Settings Page', 'paystack-for-fluent-cart')
+        /* translators: %s: Paystack Developer Settings link link with icon */
+        $step = fn($url) => \sprintf(
+            '<p>%s</p>',
+            \sprintf(
+                __('Click %1$s', 'paystack-for-fluent-cart'),
+                \sprintf('<a href="%s" target="_blank">%s %s</a>', esc_url($url), __('Paystack Developer Settings Page', 'paystack-for-fluent-cart'), $svg)
             )
         );
+
+        return [
+            'title'       => __('Webhook URL', 'paystack-for-fluent-cart'),
+            'webhook_url' => esc_url($webhook_url),
+            'description' => __('You should configure your webhook URL in Paystack Dashboard.', 'paystack-for-fluent-cart'),
+            'steps'       => [
+                'title' => __('How to configure?', 'paystack-for-fluent-cart'),
+                'list'  => [
+                    __('In your Paystack Dashboard under Settings &rarr; Developers', 'paystack-for-fluent-cart'),
+                    $step($configureLink),
+                ],
+            ],
+        ];
 
     }
 
@@ -267,7 +276,7 @@ class PaystackGateway extends AbstractPaymentGateway
                 ]
             ],
             'webhook_info' => [
-                'value' => $this->getWebhhoInstructions(),
+                'value' => $this->getWebhookInstructions(),
                 'label' => __('Webhook Configuration', 'paystack-for-fluent-cart'),
                 'type'  => 'html_attr'
             ],
