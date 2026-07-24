@@ -87,19 +87,15 @@ add_action('plugins_loaded', function() {
     /**
      * Plugin Updater
      */
-    $apiUrl = 'https://api.fluentcart.com/wp-admin/admin-ajax.php?action=fluent_cart_paystack_update&time=' . time();
-    new \PaystackFluentCart\PluginManager\Updater($apiUrl, PAYSTACK_FCT_PLUGIN_FILE, array(
-        'version'   => PAYSTACK_FCT_VERSION,
-        'license'   => '12345',
-        'item_name' => 'Paystack for FluentCart',
-        'item_id'   => '105',
-        'author'    => 'wpmanageninja'
-    ),
+    new \PaystackFluentCart\PluginManager\Updater(
+        'https://fluentcart.com/',
+        PAYSTACK_FCT_PLUGIN_FILE,
         array(
-            'license_status' => 'valid',
-            'admin_page_url' => admin_url('admin.php?page=fluent-cart#/'),
-            'purchase_url'   => 'https://fluentcart.com',
-            'plugin_title'   => 'Paystack for FluentCart'
+            'version'           => PAYSTACK_FCT_VERSION,
+            'addon_slug'        => 'paystack-for-fluent-cart',
+            'parent_product_id' => 21480,
+            'plugin_title'      => 'Paystack for FluentCart',
+            'is_free'           => true,
         )
     );
 
@@ -108,7 +104,12 @@ add_action('plugins_loaded', function() {
             return $links;
         }
 
-        $checkUpdateUrl = esc_url(admin_url('plugins.php?paystack-for-fluent-cart-check-update=' . time()));
+        $checkUpdateUrl = esc_url(
+            wp_nonce_url(
+                admin_url('plugins.php?paystack-for-fluent-cart-check-update=' . time()),
+                'paystack-for-fluent-cart-check-update'
+            )
+        );
 
         $row_meta = array(
             'check_update' => '<a style="color: #583fad;font-weight: 600;" href="' . $checkUpdateUrl . '" aria-label="' . esc_attr__('Check Update', 'paystack-for-fluent-cart') . '">' . esc_html__('Check Update', 'paystack-for-fluent-cart') . '</a>',
