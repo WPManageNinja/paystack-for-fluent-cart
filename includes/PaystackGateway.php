@@ -32,7 +32,8 @@ class PaystackGateway extends AbstractPaymentGateway
         'payment',
         'refund',
         'webhook',
-        'subscriptions'
+        'subscriptions',
+        'manual_subscription'
     ];
 
     public function __construct()
@@ -90,6 +91,10 @@ class PaystackGateway extends AbstractPaymentGateway
         ];
 
         if ($paymentInstance->subscription) {
+            if ($this->shouldChargeSubscriptionAsOneTime($paymentInstance)) {
+                return (new Onetime\PaystackProcessor())->handleSinglePayment($paymentInstance, $paymentArgs);
+            }
+
             return (new Subscriptions\PaystackSubscriptions())->handleSubscription($paymentInstance, $paymentArgs);
         }
 
