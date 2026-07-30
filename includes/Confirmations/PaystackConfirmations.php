@@ -206,7 +206,11 @@ class PaystackConfirmations
             }
 
             if (!$subscriptionData) {
-                return (new StatusHelper($order))->syncOrderStatuses($transactionModel);
+                if (PaystackSubscriptions::isStoreBilled($subscriptionModel)) {
+                    return (new StatusHelper($order))->syncOrderStatuses($transactionModel);
+                }
+
+                return $order;
             }
 
             return SubscriptionService::recordManualRenewal($subscriptionModel, $transactionModel, [

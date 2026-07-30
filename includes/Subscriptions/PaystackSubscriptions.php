@@ -473,7 +473,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
      * Mirrors AbstractPaymentGateway::shouldChargeSubscriptionAsOneTime — the
      * charge-time guard can't cover the confirmation/webhook path.
      */
-    private static function isStoreBilled($subscriptionModel): bool
+    public static function isStoreBilled($subscriptionModel): bool
     {
         if (!$subscriptionModel || !in_array($subscriptionModel->collection_method, ['manual', 'system'], true)) {
             return false;
