@@ -47,7 +47,7 @@ class PaystackCheckout {
         payButton.id = 'fct-paystack-pay-button';
         payButton.className = 'fct-paystack-pay-button';
         payButton.innerHTML = `
-            <span class="fct-paystack-btn-text">${this.getButtonText()}</span>
+            <span class="fct-paystack-btn-text"></span>
             <span class="fct-paystack-btn-loader" style="display: none;">
                 <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                     <style>.spinner{transform-origin:center;animation:spinner .75s linear infinite}@keyframes spinner{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
@@ -55,6 +55,7 @@ class PaystackCheckout {
                 </svg>
             </span>
         `;
+        payButton.querySelector('.fct-paystack-btn-text').textContent = this.getButtonText();
 
         payButton.addEventListener('click', async () => {
             if (that.#isProcessing) return;
@@ -319,7 +320,7 @@ class PaystackCheckout {
         this.#isProcessing = false;
         this.paymentLoader?.changeLoaderStatus(this.$t('Payment cancelled'));
         this.paymentLoader?.hideLoader();
-        this.paymentLoader?.enableCheckoutButton();
+        this.paymentLoader?.enableCheckoutButton(this.submitButton?.text || this.$t('Place Order'));
         if (button) this.resetPayButton(button);
     }
 
@@ -360,7 +361,7 @@ class PaystackCheckout {
         }
 
         this.paymentLoader?.hideLoader();
-        this.paymentLoader?.enableCheckoutButton();
+        this.paymentLoader?.enableCheckoutButton(this.submitButton?.text || this.$t('Place Order'));
     }
 }
 
