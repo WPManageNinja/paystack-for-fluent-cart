@@ -47,6 +47,7 @@ class PaystackSettingsBase extends BaseGatewaySettings
             'live_public_key'  => '',
             'live_secret_key'  => '',
             'payment_mode'     => 'test',
+            'checkout_button_text' => '',
         ];
     }
 
