@@ -9,6 +9,7 @@ use FluentCart\App\Models\Subscription;
 use FluentCart\App\Models\Order;
 use FluentCart\App\Modules\PaymentMethods\Core\AbstractSubscriptionModule;
 use FluentCart\App\Events\Subscription\SubscriptionActivated;
+use FluentCart\App\Modules\Subscriptions\Services\SubscriptionManagementMode;
 use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
 use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
@@ -314,6 +315,13 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
      */
     public function createSubscriptionOnPayStack($subscriptionModel, $args = [])
     {
+        // Runs on confirmation and webhook, after the charge-time
+        // shouldChargeSubscriptionAsOneTime guard — re-check the subscription so a
+        // store-billed (manual/system) subscription never gains a vendor schedule.
+        if (self::isStoreBilled($subscriptionModel)) {
+            return [];
+        }
+
         $order = $subscriptionModel->order;
         $startDate = null;
         $oldStatus = $subscriptionModel->status;
@@ -459,6 +467,24 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'status'      => Status::SUBSCRIPTION_CANCELED,
             'canceled_at' => DateTime::gmtNow()->format('Y-m-d H:i:s')
         ];
+    }
+
+    /**
+     * Mirrors AbstractPaymentGateway::shouldChargeSubscriptionAsOneTime — the
+     * charge-time guard can't cover the confirmation/webhook path.
+     */
+    public static function isStoreBilled($subscriptionModel): bool
+    {
+        if (!$subscriptionModel || !in_array($subscriptionModel->collection_method, ['manual', 'system'], true)) {
+            return false;
+        }
+
+        if (!class_exists(SubscriptionManagementMode::class)) {
+            return false;
+        }
+
+        return SubscriptionManagementMode::isSubscriptionStoreManaged($subscriptionModel)
+            || SubscriptionManagementMode::isStoreManaged();
     }
 
 }

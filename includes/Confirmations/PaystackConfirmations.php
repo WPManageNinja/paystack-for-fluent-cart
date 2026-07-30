@@ -201,9 +201,18 @@ class PaystackConfirmations
             $subscriptionModel = Subscription::query()->where('id', $transactionModel->subscription_id)->first();
 
 
-            if (!$subscriptionModel || !$subscriptionData) {
+            if (!$subscriptionModel) {
                 return $order; // No subscription found for this renewal order. Something is wrong.
             }
+
+            if (!$subscriptionData) {
+                if (PaystackSubscriptions::isStoreBilled($subscriptionModel)) {
+                    return (new StatusHelper($order))->syncOrderStatuses($transactionModel);
+                }
+
+                return $order;
+            }
+
             return SubscriptionService::recordManualRenewal($subscriptionModel, $transactionModel, [
                 'billing_info'      => $billingInfo,
                 'subscription_args' => $subscriptionData
