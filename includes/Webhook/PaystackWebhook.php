@@ -177,7 +177,7 @@ class PaystackWebhook
             'exp_year' => Arr::get($paystackTransaction, 'authorization.exp_year')
         ];
 
-        if ($paystackPlan) {
+        if ($paystackPlan && $subscriptionModel && !in_array($subscriptionModel->status, [Status::SUBSCRIPTION_ACTIVE, Status::SUBSCRIPTION_TRIALING])) {
             $updatedSubData = (new PaystackSubscriptions())->createSubscriptionOnPayStack( $subscriptionModel, [
                 'customer_code' => $paystackCustomer,
                 'authorization_code' => $paystackCustomerAuthorization,
