@@ -1,6 +1,8 @@
 class PaystackCheckout {
     #cdnUrl = 'https://js.paystack.co/v2/inline.js';
     #publicKey = null;
+    #isProcessing = false;
+
     constructor(form, orderHandler, response, paymentLoader) {
         this.form = form;
         this.orderHandler = orderHandler;
@@ -11,36 +13,74 @@ class PaystackCheckout {
         this.#publicKey = response?.payment_args?.public_key;
     }
 
-     init() {
-        this.paymentLoader.enableCheckoutButton(this.translate(this.submitButton.text));
-        const that = this;        
+    init() {
         const paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
-        if (paystackContainer) {
+        const hasCustomContent = paystackContainer && paystackContainer.dataset.hasCustomContent === 'true';
+
+        if (paystackContainer && !hasCustomContent) {
             paystackContainer.innerHTML = '';
+            this.renderPaymentButton(paystackContainer);
+        } else {
+            // Custom content owns the UI — still signal the loader so the
+            // method doesn't stay stuck in its loading state.
+            window.dispatchEvent(new CustomEvent('fluent_cart_payment_method_loading_success', {
+                detail: { payment_method: 'paystack' }
+            }));
+            const loadingElement = document.getElementById('fct_loading_payment_processor');
+            if (loadingElement) {
+                loadingElement.remove();
+            }
         }
-
-        this.renderPaymentInfo();
-
 
         this.#publicKey = this.data?.payment_args?.public_key;
 
-        window.addEventListener("fluent_cart_payment_next_action_paystack", async(e) => {
-
-            const remoteResponse = e.detail?.response;           
-            const access_code = remoteResponse?.data?.paystack_data?.access_code;
-            const authorizationUrl = remoteResponse?.data?.paystack_data?.authorization_url;
-            const intent = remoteResponse?.data?.intent;
-
-             if (access_code && authorizationUrl) {
-                // this.paymentLoader.hideLoader();
-                if (intent === 'onetime') {
-                    this.onetimePaymentHandler(access_code, authorizationUrl);
-                } else if (intent === 'subscription') {
-                    this.paystackSubscriptionPayment(access_code, authorizationUrl);
+        // The core checkout form can still submit implicitly (Enter in a field
+        // targets the hidden Place Order button). That path creates the order
+        // and dispatches next_action — catch it and open the popup, otherwise
+        // the order is stranded with no way to pay.
+        window.fctPaystackInstance = this;
+        if (!window.fctPaystackNextActionBound) {
+            window.fctPaystackNextActionBound = true;
+            window.addEventListener('fluent_cart_payment_next_action_paystack', async (e) => {
+                const instance = window.fctPaystackInstance;
+                if (instance) {
+                    await instance.handleNextAction(e.detail?.response);
                 }
-             }
-               
-        });
+            });
+        }
+    }
+
+    async handleNextAction(response) {
+        const paystackData = response?.data?.paystack_data;
+        const intent = response?.data?.intent;
+
+        if (!paystackData?.access_code || this.#isProcessing) {
+            return;
+        }
+
+        this.#isProcessing = true;
+
+        const button = document.getElementById('fct-paystack-pay-button');
+        if (button) {
+            const btnText = button.querySelector('.fct-paystack-btn-text');
+            const btnLoader = button.querySelector('.fct-paystack-btn-loader');
+            if (btnText) btnText.textContent = this.$t('Processing...');
+            if (btnLoader) btnLoader.style.display = 'inline-block';
+            button.disabled = true;
+        }
+
+        try {
+            await this.loadPaystackScript();
+
+            if (intent === 'subscription') {
+                this.paystackSubscriptionPayment(paystackData.access_code, paystackData.authorization_url, button);
+            } else {
+                this.onetimePaymentHandler(paystackData.access_code, paystackData.authorization_url, button);
+            }
+        } catch (error) {
+            this.handlePaystackError(error);
+            this.resetPayButton(button);
+        }
     }
 
     translate(string) {
@@ -48,35 +88,119 @@ class PaystackCheckout {
         return translations[string] || string;
     }
 
+    getButtonText() {
+        return window.fct_paystack_data?.button_text || this.$t('Pay with Paystack');
+    }
+
+    getBodyText() {
+        return window.fct_paystack_data?.body_text || this.$t('Pay securely, available payment options are shown in the next step.');
+    }
+
+    renderPaymentButton(container) {
+        const that = this;
+
+        this.renderPaymentInfo();
+
+        const buttonWrapper = document.createElement('div');
+        buttonWrapper.className = 'fct-paystack-button-wrapper';
+
+        const payButton = document.createElement('button');
+        payButton.type = 'button';
+        payButton.id = 'fct-paystack-pay-button';
+        payButton.className = 'fct-paystack-pay-button';
+        payButton.innerHTML = `
+            <span class="fct-paystack-btn-text"></span>
+            <span class="fct-paystack-btn-loader" style="display: none;">
+                <svg width="20" height="20" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <style>.spinner{transform-origin:center;animation:spinner .75s linear infinite}@keyframes spinner{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}</style>
+                    <circle class="spinner" cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="31.4 31.4"/>
+                </svg>
+            </span>
+        `;
+        payButton.querySelector('.fct-paystack-btn-text').textContent = this.getButtonText();
+
+        payButton.addEventListener('click', async () => {
+            if (that.#isProcessing) return;
+            await that.handlePayButtonClick(payButton);
+        });
+
+        buttonWrapper.appendChild(payButton);
+        container.appendChild(buttonWrapper);
+
+        window.dispatchEvent(new CustomEvent('fluent_cart_payment_method_loading_success', {
+            detail: { payment_method: 'paystack' }
+        }));
+
+        const loadingElement = document.getElementById('fct_loading_payment_processor');
+        if (loadingElement) {
+            loadingElement.remove();
+        }
+    }
+
+    async handlePayButtonClick(button) {
+        this.#isProcessing = true;
+
+        const btnText = button.querySelector('.fct-paystack-btn-text');
+        const btnLoader = button.querySelector('.fct-paystack-btn-loader');
+        btnText.textContent = this.$t('Processing...');
+        btnLoader.style.display = 'inline-block';
+        button.disabled = true;
+
+        try {
+            if (typeof this.orderHandler !== 'function') {
+                throw new Error(this.$t('Order handler not available'));
+            }
+
+            const orderResponse = await this.orderHandler();
+
+            if (!orderResponse) {
+                // handleOrder() already surfaced the real reason (validation error,
+                // toast, cart-lock message) and re-enabled the shared button state —
+                // just reset our own button, don't stack a second generic error on top.
+                this.resetPayButton(button);
+                return;
+            }
+
+            const paystackData = orderResponse?.data?.paystack_data;
+            const intent = orderResponse?.data?.intent;
+
+            if (!paystackData?.access_code) {
+                throw new Error(this.$t('Payment data not received'));
+            }
+
+            await this.loadPaystackScript();
+
+            if (intent === 'subscription') {
+                this.paystackSubscriptionPayment(paystackData.access_code, paystackData.authorization_url, button);
+            } else {
+                this.onetimePaymentHandler(paystackData.access_code, paystackData.authorization_url, button);
+            }
+        } catch (error) {
+            this.handlePaystackError(error);
+            this.resetPayButton(button);
+        }
+    }
+
+    resetPayButton(button) {
+        this.#isProcessing = false;
+        if (!button) {
+            return;
+        }
+        const btnText = button.querySelector('.fct-paystack-btn-text');
+        const btnLoader = button.querySelector('.fct-paystack-btn-loader');
+        btnText.textContent = this.getButtonText();
+        btnLoader.style.display = 'none';
+        button.disabled = false;
+    }
+
     renderPaymentInfo() {
         let html = '<div class="fct-paystack-info">';
-        
-        // Simple header
-        html += '<div class="fct-paystack-header">';
-        html += '<p class="fct-paystack-subheading">' + this.$t('Available payment methods on Checkout') + '</p>';
+        const bodyText = document.createElement('p');
+        bodyText.className = 'fct-paystack-subheading';
+        bodyText.textContent = this.getBodyText();
+        html += bodyText.outerHTML;
         html += '</div>';
-        
-        // Payment methods
-        html += '<div class="fct-paystack-methods">';
-        html += '<div class="fct-paystack-method">';
-        html += '<span class="fct-method-name">' + this.$t('Cards') + '</span>';
-        html += '</div>';
-        html += '<div class="fct-paystack-method">';
-        html += '<span class="fct-method-name">' + this.$t('Bank Transfer') + '</span>';
-        html += '</div>';
-        html += '<div class="fct-paystack-method">';
-        html += '<span class="fct-method-name">' + this.$t('USSD') + '</span>';
-        html += '</div>';
-        html += '<div class="fct-paystack-method">';
-        html += '<span class="fct-method-name">' + this.$t('QR Code') + '</span>';
-        html += '</div>';
-        html += '<div class="fct-paystack-method">';
-        html += '<span class="fct-method-name">' + this.$t('PayAttitude') + '</span>'; 
-        html += '</div>';
-        html += '</div>';
-        
-        html += '</div>';
-        
+
         // Add CSS styles
         html += `<style>
             .fct-paystack-info {
@@ -84,68 +208,56 @@ class PaystackCheckout {
                 border: 1px solid #e0e0e0;
                 border-radius: 8px;
                 background: #f9f9f9;
-                margin-bottom: 20px;
+                margin-bottom: 10px;
             }
-            
-            .fct-paystack-header {
-                text-align: center;
-                margin-bottom: 16px;
+
+            .fct-paystack-button-wrapper {
+                margin-bottom: 10px;
             }
-            
-            .fct-paystack-heading {
-                margin: 0 0 4px 0;
-                font-size: 18px;
-                font-weight: 600;
-                color: #0c7fdc;
-            }
-            
+
             .fct-paystack-subheading {
                 margin: 0;
                 font-size: 12px;
                 color: #999;
                 font-weight: 400;
             }
-            
-            .fct-paystack-methods {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
-                gap: 10px;
-            }
-            
-            .fct-paystack-method {
+
+            .fct-paystack-pay-button {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 10px;
-                background: white;
-                border: 1px solid #ddd;
-                border-radius: 6px;
-                transition: all 0.2s ease;
-                cursor: text;
+                gap: 8px;
+                width: 100%;
+                box-sizing: border-box;
+                padding: 14px 20px;
+                line-height: 1;
+                background: #011B33;
+                color: #fff;
+                border: none;
+                border-radius: 8px;
+                font-size: 15px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: opacity 0.2s ease;
             }
-            
-            .fct-method-name {
-                font-size: 12px;
-                font-weight: 500;
-                color: #333;
+
+            .fct-paystack-pay-button .fct-paystack-btn-text {
+                line-height: 1;
+                display: inline-block;
             }
-            
+
+            .fct-paystack-pay-button:hover {
+                opacity: 0.9;
+            }
+
+            .fct-paystack-pay-button:disabled {
+                opacity: 0.7;
+                cursor: not-allowed;
+            }
+
             @media (max-width: 768px) {
                 .fct-paystack-info {
                     padding: 16px;
-                }
-                
-                .fct-paystack-heading {
-                    font-size: 16px;
-                }
-                
-                .fct-paystack-methods {
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 8px;
-                }
-                
-                .fct-paystack-method {
-                    padding: 8px;
                 }
             }
         </style>`;
@@ -174,15 +286,7 @@ class PaystackCheckout {
         });
     }
 
-    async onetimePaymentHandler(access_code, authorizationUrl) {
-         try {
-            await this.loadPaystackScript();
-        } catch (error) {
-            console.error('Paystack script failed to load:', error);
-            this.handlePaystackError(error);
-            return;
-        }
-
+    async onetimePaymentHandler(access_code, authorizationUrl, button) {
         try {
             const popup = new PaystackPop();
             popup.resumeTransaction(access_code, {
@@ -190,27 +294,20 @@ class PaystackCheckout {
                     this.handlePaymentSuccess(transaction);
                 },
                 onCancel: () => {
-                    this.handlePaymentCancel();
+                    this.handlePaymentCancel(button);
                 },
                 onError: (error) => {
                     this.handlePaystackError(error);
+                    this.resetPayButton(button);
                 }
             });
         } catch (error) {
-            console.error('Error resuming Paystack popup:', error);
             this.handlePaystackError(error);
+            this.resetPayButton(button);
         }
     }
 
-    async paystackSubscriptionPayment(access_code, authorizationUrl) {
-        try {
-            await this.loadPaystackScript();
-        } catch (error) {
-            console.error('Paystack script failed to load:', error);
-            this.handlePaystackError(error);
-            return;
-        }
-
+    async paystackSubscriptionPayment(access_code, authorizationUrl, button) {
         try {
             const popup = new PaystackPop();
             popup.resumeTransaction(access_code, {
@@ -218,19 +315,27 @@ class PaystackCheckout {
                     this.handlePaymentSuccess(transaction);
                 },
                 onCancel: () => {
-                    this.handlePaymentCancel();
+                    this.handlePaymentCancel(button);
                 },
                 onError: (error) => {
                     this.handlePaystackError(error);
+                    this.resetPayButton(button);
                 }
             });
         } catch (error) {
-            console.error('Error resuming Paystack subscription popup:', error);
             this.handlePaystackError(error);
+            this.resetPayButton(button);
         }
     }
 
     handlePaymentSuccess(transaction) {
+        this.paymentLoader?.changeLoaderStatus(this.$t('Verifying payment...'));
+
+        const button = document.getElementById('fct-paystack-pay-button');
+        if (button) {
+            const btnText = button.querySelector('.fct-paystack-btn-text');
+            if (btnText) btnText.textContent = this.$t('Verifying payment...');
+        }
 
         const params = new URLSearchParams({
             action: 'fluent_cart_confirm_paystack_payment',
@@ -254,12 +359,15 @@ class PaystackCheckout {
                         window.location.href = res.redirect_url;
                     } else {
                         that.handlePaystackError(new Error(res?.message || 'Payment confirmation failed'));
+                        if (button) that.resetPayButton(button);
                     }
                 } catch (error) {
                     that.handlePaystackError(error);
+                    if (button) that.resetPayButton(button);
                 }
             } else {
                 that.handlePaystackError(new Error(that.$t('Network error: ' + xhr.status)));
+                if (button) that.resetPayButton(button);
             }
         };
 
@@ -268,20 +376,25 @@ class PaystackCheckout {
                 const err = JSON.parse(xhr.responseText);
                 that.handlePaystackError(err);
             } catch (e) {
-                console.error('An error occurred:', e);
                 that.handlePaystackError(e);
             }
+            if (button) that.resetPayButton(button);
         };
 
         xhr.send(params.toString());
     }
 
-    handlePaymentCancel() {
-        this.paymentLoader.hideLoader();
-        this.paymentLoader.enableCheckoutButton(this.submitButton.text);    
+    handlePaymentCancel(button) {
+        this.#isProcessing = false;
+        this.paymentLoader?.changeLoaderStatus(this.$t('Payment cancelled'));
+        this.paymentLoader?.hideLoader();
+        this.paymentLoader?.enableCheckoutButton(this.submitButton?.text || this.$t('Place Order'));
+        if (button) this.resetPayButton(button);
     }
 
     handlePaystackError(err) {
+        this.#isProcessing = false;
+
         let errorMessage = this.$t('An unknown error occurred');
 
         if (err?.message) {
@@ -298,25 +411,47 @@ class PaystackCheckout {
         }
 
         let paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
-        let tempMessage = this.$t('Something went wrong');
+        if (paystackContainer) {
+            const existingError = paystackContainer.querySelector('.fct-paystack-error');
+            if (existingError) existingError.remove();
 
-        if (paystackContainer) {            
-            paystackContainer.innerHTML += '<div id="fct_loading_payment_processor">' + this.$t(tempMessage) + '</div>';
-            paystackContainer.style.display = 'block';
-            paystackContainer.querySelector('#fct_loading_payment_processor').style.color = '#dc3545';
-            paystackContainer.querySelector('#fct_loading_payment_processor').style.fontSize = '14px';
-            paystackContainer.querySelector('#fct_loading_payment_processor').style.padding = '10px';
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'fct-paystack-error';
+            errorDiv.textContent = errorMessage;
+            errorDiv.style.color = '#dc3545';
+            errorDiv.style.fontSize = '14px';
+            errorDiv.style.padding = '10px 0 0 0';
+            paystackContainer.appendChild(errorDiv);
+
+            setTimeout(() => {
+                if (errorDiv.parentNode) errorDiv.remove();
+            }, 5000);
         }
-         
-        this.paymentLoader.hideLoader();
-        this.paymentLoader?.enableCheckoutButton(this.submitButton?.text || this.$t('Place Order'));
-    
-    }
 
+        this.paymentLoader?.hideLoader();
+        this.paymentLoader?.enableCheckoutButton(this.submitButton?.text || this.$t('Place Order'));
+    }
 }
 
 window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
-    const translate = window.fluentcart.$t;
+    window.dispatchEvent(new CustomEvent('fluent_cart_payment_method_loading', {
+        detail: { payment_method: 'paystack' }
+    }));
+
+    const paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
+    if (paystackContainer && paystackContainer.children.length > 0) {
+        // Only third-party markup counts as custom content. Our own rendered
+        // button / loading text / error from a previous load event must not
+        // flip this flag, or re-selecting Paystack skips rendering and the
+        // loading state never clears.
+        const ownContent = paystackContainer.querySelector(
+            '.fct-paystack-info, .fct-paystack-button-wrapper, #fct_loading_payment_processor, .fct-error-message, .fct-paystack-error'
+        );
+        if (!ownContent) {
+            paystackContainer.dataset.hasCustomContent = 'true';
+        }
+    }
+
     addLoadingText();
     fetch(e.detail.paymentInfoUrl, {
         method: "POST",
@@ -343,9 +478,6 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
 
     function displayErrorMessage(message) {
         const errorDiv = document.createElement('div');
-        errorDiv.style.color = 'red';
-        errorDiv.style.padding = '10px';
-        errorDiv.style.fontSize = '14px';
         errorDiv.className = 'fct-error-message';
         errorDiv.textContent = message;
 
@@ -358,14 +490,25 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
         if (loadingElement) {
             loadingElement.remove();
         }
+
+        window.dispatchEvent(new CustomEvent('fluent_cart_payment_method_loading_failed', {
+            detail: { payment_method: 'paystack' }
+        }));
         return;
     }
 
     function addLoadingText() {
         let paystackButtonContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
         if (paystackButtonContainer) {
+            if (paystackButtonContainer.dataset.hasCustomContent === 'true') {
+                return;
+            }
+            if (document.getElementById('fct_loading_payment_processor')) {
+                return;
+            }
             const loadingMessage = document.createElement('p');
             loadingMessage.id = 'fct_loading_payment_processor';
+            loadingMessage.className = 'fct-paystack-loading';
             const translations = window.fct_paystack_data?.translations || {};
             function $t(string) {
                 return translations[string] || string;
@@ -375,5 +518,3 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
         }
     }
 });
-
-

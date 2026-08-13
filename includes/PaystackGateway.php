@@ -42,6 +42,11 @@ class PaystackGateway extends AbstractPaymentGateway
             new PaystackSettingsBase(),
             new PaystackSubscriptions()
         );
+
+        add_filter('fluent_cart/payment_methods_with_custom_checkout_buttons', function ($methods) {
+            $methods[] = 'paystack';
+            return $methods;
+        });
     }
 
     public function meta(): array
@@ -144,14 +149,48 @@ class PaystackGateway extends AbstractPaymentGateway
         return [
             'fct_paystack_data' => [
                 'public_key' => $this->settings->getPublicKey(),
+                'button_text' => $this->getCheckoutButtonText(),
+                'body_text'   => $this->getCheckoutBodyText(),
                 'translations' => [
                     'Processing payment...' => __('Processing payment...', 'paystack-for-fluent-cart'),
                     'Pay Now' => __('Pay Now', 'paystack-for-fluent-cart'),
                     'Place Order' => __('Place Order', 'paystack-for-fluent-cart'),
+                    'Pay securely, available payment options are shown in the next step.' => __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart'),
+                    'Pay with Paystack' => __('Pay with Paystack', 'paystack-for-fluent-cart'),
+                    'Processing...' => __('Processing...', 'paystack-for-fluent-cart'),
+                    'Verifying payment...' => __('Verifying payment...', 'paystack-for-fluent-cart'),
+                    'Payment cancelled' => __('Payment cancelled', 'paystack-for-fluent-cart'),
+                    'Order handler not available' => __('Order handler not available', 'paystack-for-fluent-cart'),
+                    'Payment data not received' => __('Payment data not received', 'paystack-for-fluent-cart'),
+                    'An unknown error occurred' => __('An unknown error occurred', 'paystack-for-fluent-cart'),
+                    'Loading Payment Processor...' => __('Loading Payment Processor...', 'paystack-for-fluent-cart'),
+                    'An error occurred while loading paystack.' => __('An error occurred while loading paystack.', 'paystack-for-fluent-cart'),
                 ],
                 'nonce' => wp_create_nonce('paystack_fct_nonce')
             ]
         ];
+    }
+
+    private function getCheckoutButtonText(): string
+    {
+        $buttonText = $this->settings->get('checkout_button_text');
+
+        if (is_string($buttonText) && trim($buttonText) !== '') {
+            return trim($buttonText);
+        }
+
+        return __('Pay with Paystack', 'paystack-for-fluent-cart');
+    }
+
+    private function getCheckoutBodyText(): string
+    {
+        $bodyText = $this->settings->get('checkout_body_text');
+
+        if (is_string($bodyText) && trim($bodyText) !== '') {
+            return trim($bodyText);
+        }
+
+        return __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart');
     }
 
     public function webHookPaymentMethodName()
@@ -279,6 +318,18 @@ class PaystackGateway extends AbstractPaymentGateway
                         ],
                     ],
                 ]
+            ],
+            'checkout_button_text' => [
+                'value'       => __('Pay with Paystack', 'paystack-for-fluent-cart'),
+                'label'       => __('Checkout Button Text', 'paystack-for-fluent-cart'),
+                'type'        => 'text',
+                'placeholder' => __('Pay with Paystack', 'paystack-for-fluent-cart'),
+            ],
+            'checkout_body_text' => [
+                'value'       => __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart'),
+                'label'       => __('Checkout Body Text', 'paystack-for-fluent-cart'),
+                'type'        => 'text',
+                'placeholder' => __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart'),
             ],
             'webhook_info' => [
                 'value' => $this->getWebhookInstructions(),
