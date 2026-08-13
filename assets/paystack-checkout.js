@@ -33,6 +33,54 @@ class PaystackCheckout {
         }
 
         this.#publicKey = this.data?.payment_args?.public_key;
+
+        // The core checkout form can still submit implicitly (Enter in a field
+        // targets the hidden Place Order button). That path creates the order
+        // and dispatches next_action — catch it and open the popup, otherwise
+        // the order is stranded with no way to pay.
+        window.fctPaystackInstance = this;
+        if (!window.fctPaystackNextActionBound) {
+            window.fctPaystackNextActionBound = true;
+            window.addEventListener('fluent_cart_payment_next_action_paystack', async (e) => {
+                const instance = window.fctPaystackInstance;
+                if (instance) {
+                    await instance.handleNextAction(e.detail?.response);
+                }
+            });
+        }
+    }
+
+    async handleNextAction(response) {
+        const paystackData = response?.data?.paystack_data;
+        const intent = response?.data?.intent;
+
+        if (!paystackData?.access_code || this.#isProcessing) {
+            return;
+        }
+
+        this.#isProcessing = true;
+
+        const button = document.getElementById('fct-paystack-pay-button');
+        if (button) {
+            const btnText = button.querySelector('.fct-paystack-btn-text');
+            const btnLoader = button.querySelector('.fct-paystack-btn-loader');
+            if (btnText) btnText.textContent = this.$t('Processing...');
+            if (btnLoader) btnLoader.style.display = 'inline-block';
+            button.disabled = true;
+        }
+
+        try {
+            await this.loadPaystackScript();
+
+            if (intent === 'subscription') {
+                this.paystackSubscriptionPayment(paystackData.access_code, paystackData.authorization_url, button);
+            } else {
+                this.onetimePaymentHandler(paystackData.access_code, paystackData.authorization_url, button);
+            }
+        } catch (error) {
+            this.handlePaystackError(error);
+            this.resetPayButton(button);
+        }
     }
 
     translate(string) {
@@ -135,6 +183,9 @@ class PaystackCheckout {
 
     resetPayButton(button) {
         this.#isProcessing = false;
+        if (!button) {
+            return;
+        }
         const btnText = button.querySelector('.fct-paystack-btn-text');
         const btnLoader = button.querySelector('.fct-paystack-btn-loader');
         btnText.textContent = this.getButtonText();
