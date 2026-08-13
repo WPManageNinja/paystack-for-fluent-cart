@@ -20,6 +20,16 @@ class PaystackCheckout {
         if (paystackContainer && !hasCustomContent) {
             paystackContainer.innerHTML = '';
             this.renderPaymentButton(paystackContainer);
+        } else {
+            // Custom content owns the UI — still signal the loader so the
+            // method doesn't stay stuck in its loading state.
+            window.dispatchEvent(new CustomEvent('fluent_cart_payment_method_loading_success', {
+                detail: { payment_method: 'paystack' }
+            }));
+            const loadingElement = document.getElementById('fct_loading_payment_processor');
+            if (loadingElement) {
+                loadingElement.remove();
+            }
         }
 
         this.#publicKey = this.data?.payment_args?.public_key;
@@ -32,6 +42,10 @@ class PaystackCheckout {
 
     getButtonText() {
         return window.fct_paystack_data?.button_text || this.$t('Pay with Paystack');
+    }
+
+    getBodyText() {
+        return window.fct_paystack_data?.body_text || this.$t('Pay securely, available payment options are shown in the next step.');
     }
 
     renderPaymentButton(container) {
@@ -130,7 +144,10 @@ class PaystackCheckout {
 
     renderPaymentInfo() {
         let html = '<div class="fct-paystack-info">';
-        html += '<p class="fct-paystack-subheading">' + this.$t('Pay securely — available options are shown in the next step.') + '</p>';
+        const bodyText = document.createElement('p');
+        bodyText.className = 'fct-paystack-subheading';
+        bodyText.textContent = this.getBodyText();
+        html += bodyText.outerHTML;
         html += '</div>';
 
         // Add CSS styles
@@ -372,7 +389,16 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
 
     const paystackContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
     if (paystackContainer && paystackContainer.children.length > 0) {
-        paystackContainer.dataset.hasCustomContent = 'true';
+        // Only third-party markup counts as custom content. Our own rendered
+        // button / loading text / error from a previous load event must not
+        // flip this flag, or re-selecting Paystack skips rendering and the
+        // loading state never clears.
+        const ownContent = paystackContainer.querySelector(
+            '.fct-paystack-info, .fct-paystack-button-wrapper, #fct_loading_payment_processor, .fct-error-message, .fct-paystack-error'
+        );
+        if (!ownContent) {
+            paystackContainer.dataset.hasCustomContent = 'true';
+        }
     }
 
     addLoadingText();
@@ -413,6 +439,10 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
         if (loadingElement) {
             loadingElement.remove();
         }
+
+        window.dispatchEvent(new CustomEvent('fluent_cart_payment_method_loading_failed', {
+            detail: { payment_method: 'paystack' }
+        }));
         return;
     }
 
@@ -420,6 +450,9 @@ window.addEventListener("fluent_cart_load_payments_paystack", function (e) {
         let paystackButtonContainer = document.querySelector('.fluent-cart-checkout_embed_payment_container_paystack');
         if (paystackButtonContainer) {
             if (paystackButtonContainer.dataset.hasCustomContent === 'true') {
+                return;
+            }
+            if (document.getElementById('fct_loading_payment_processor')) {
                 return;
             }
             const loadingMessage = document.createElement('p');
