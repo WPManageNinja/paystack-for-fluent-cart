@@ -311,7 +311,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
     /**
      * Create subscription on Paystack
      * @param Subscription $subscriptionModel
-     * @param array $args , expects 'customer_code', 'plan_code', 'authorization_code', 'billingInfo'
+     * @param array $args , expects 'customer_code', 'plan_code', 'authorization_code', 'billing_info'
      */
     public function createSubscriptionOnPayStack($subscriptionModel, $args = [])
     {
@@ -367,7 +367,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
         $subscriptionModel->update($updateData);
 
-        $subscriptionModel->updateMeta('active_payment_method', Arr::get($args, 'billingInfo', []));
+        $subscriptionModel->updateMeta('active_payment_method', Arr::get($args, 'billing_info', []));
         $subscriptionModel->updateMeta('paystack_email_token', Arr::get($payStackSubscription, 'data.email_token'));
 
         fluent_cart_add_log(__('Paystack Subscription Created', 'paystack-for-fluent-cart'), 'Subscription created on Paystack. Code: ' . Arr::get($payStackSubscription, 'data.subscription_code'), 'info', [
