@@ -150,11 +150,12 @@ class PaystackGateway extends AbstractPaymentGateway
             'fct_paystack_data' => [
                 'public_key' => $this->settings->getPublicKey(),
                 'button_text' => $this->getCheckoutButtonText(),
+                'body_text'   => $this->getCheckoutBodyText(),
                 'translations' => [
                     'Processing payment...' => __('Processing payment...', 'paystack-for-fluent-cart'),
                     'Pay Now' => __('Pay Now', 'paystack-for-fluent-cart'),
                     'Place Order' => __('Place Order', 'paystack-for-fluent-cart'),
-                    'Pay securely — available options are shown in the next step.' => __('Pay securely — available options are shown in the next step.', 'paystack-for-fluent-cart'),
+                    'Pay securely, available payment options are shown in the next step.' => __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart'),
                     'Pay with Paystack' => __('Pay with Paystack', 'paystack-for-fluent-cart'),
                     'Processing...' => __('Processing...', 'paystack-for-fluent-cart'),
                     'Verifying payment...' => __('Verifying payment...', 'paystack-for-fluent-cart'),
@@ -179,6 +180,17 @@ class PaystackGateway extends AbstractPaymentGateway
         }
 
         return __('Pay with Paystack', 'paystack-for-fluent-cart');
+    }
+
+    private function getCheckoutBodyText(): string
+    {
+        $bodyText = $this->settings->get('checkout_body_text');
+
+        if (is_string($bodyText) && trim($bodyText) !== '') {
+            return trim($bodyText);
+        }
+
+        return __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart');
     }
 
     public function webHookPaymentMethodName()
@@ -312,6 +324,12 @@ class PaystackGateway extends AbstractPaymentGateway
                 'label'       => __('Checkout Button Text', 'paystack-for-fluent-cart'),
                 'type'        => 'text',
                 'placeholder' => __('Pay with Paystack', 'paystack-for-fluent-cart'),
+            ],
+            'checkout_body_text' => [
+                'value'       => __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart'),
+                'label'       => __('Checkout Body Text', 'paystack-for-fluent-cart'),
+                'type'        => 'text',
+                'placeholder' => __('Pay securely, available payment options are shown in the next step.', 'paystack-for-fluent-cart'),
             ],
             'webhook_info' => [
                 'value' => $this->getWebhookInstructions(),
