@@ -242,6 +242,11 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
             if (Arr::get($payment, 'status') == 'success') {
 
+                // Paystack's paidAt is when the transaction was completed; that
+                // is the settlement moment, not this resync's run time.
+                $paidAt = Arr::get($payment, 'paidAt') ?: Arr::get($payment, 'paid_at');
+                $settledAt = $paidAt ? DateTime::anyTimeToGmt($paidAt)->format('Y-m-d H:i:s') : null;
+
                 $amount = Arr::get($payment, 'amount');
                 $methodType  = Arr::get($payment, 'authorization.payment_type');
                 $cardLast4 =  Arr::get($payment, 'authorization.last4', null);
@@ -258,6 +263,12 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
                         ->first();
 
                     if ($transaction) {
+                        if ($settledAt && empty($transaction->meta['settled_at'])) {
+                            $transaction->meta = array_merge($transaction->meta ?? [], [
+                                'settled_at' => $settledAt
+                            ]);
+                        }
+
                         $transaction->update([
                             'vendor_charge_id'      => $vendorChargeId,
                             'status'                => Status::TRANSACTION_SUCCEEDED,
@@ -280,7 +291,10 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
                         'status'           => status::TRANSACTION_SUCCEEDED,
                         'payment_method'   => 'paystack',
                         'transaction_type' => Status::TRANSACTION_TYPE_CHARGE,
-                        'meta'             => Arr::get($payment, 'authorization', []),
+                        'meta'             => array_merge(
+                            Arr::get($payment, 'authorization', []),
+                            $settledAt ? ['settled_at' => $settledAt] : []
+                        ),
                         'card_last_4'      => $cardLast4,
                         'card_brand'       => $cardBrand,
                         'created_at'       => DateTime::anyTimeToGmt(Arr::get($payment, 'paidAt'))->format('Y-m-d H:i:s'),
@@ -288,6 +302,12 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
                     $newPayment = true;
                     SubscriptionService::recordRenewalPayment($transactionData, $subscriptionModel, $subscriptionUpdateData);
                 } else if ($transaction->status !== Status::TRANSACTION_SUCCEEDED) {
+                    if ($settledAt && empty($transaction->meta['settled_at'])) {
+                        $transaction->meta = array_merge($transaction->meta ?? [], [
+                            'settled_at' => $settledAt
+                        ]);
+                    }
+
                     // Update existing transaction if status has changed
                     $transaction->update([
                         'status' => status::TRANSACTION_SUCCEEDED,

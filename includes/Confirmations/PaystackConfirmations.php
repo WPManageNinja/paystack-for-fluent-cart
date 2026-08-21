@@ -8,6 +8,7 @@ use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
 use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
+use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
 use PaystackFluentCart\API\PaystackAPI;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
@@ -162,6 +163,17 @@ class PaystackConfirmations
         $currency = Arr::get($transactionData, 'currency');
         $transactionMeta = Arr::get($args, 'charge.metadata', []);
 
+        $metaData = array_merge($transactionModel->meta ?? [], $billingInfo);
+
+        // Paystack's paid_at is when the transaction was completed. When this
+        // confirmation is the first path to mark the transaction succeeded, it
+        // beats the model hook's fallback now() stamp — which for a delayed
+        // webhook would be the (later) processing time, not the charge time.
+        $paidAt = Arr::get($transactionData, 'paid_at') ?: Arr::get($transactionData, 'paidAt');
+        if ($paidAt && empty($metaData['settled_at'])) {
+            $metaData['settled_at'] = DateTime::anyTimeToGmt($paidAt)->format('Y-m-d H:i:s');
+        }
+
         // Update transaction
         $transactionUpdateData = array_filter([
             'order_id' => $order->id,
@@ -173,7 +185,7 @@ class PaystackConfirmations
             'card_brand' => Arr::get($billingInfo, 'brand', ''),
             'payment_method_type' => Arr::get($billingInfo, 'payment_method_type', ''),
             'vendor_charge_id' => $vendorChargeId,
-            'meta' => array_merge($transactionModel->meta ?? [], $billingInfo)
+            'meta' => $metaData
         ]);
 
         $transactionModel->fill($transactionUpdateData);
