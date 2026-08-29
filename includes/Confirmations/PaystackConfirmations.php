@@ -237,7 +237,7 @@ class PaystackConfirmations
     public function confirmationSuccess(OrderTransaction $transactionModel)
     {
         wp_send_json([
-            'redirect_url' => $transactionModel->getReceiptPageUrl(),
+            'redirect_url' => method_exists($transactionModel, 'getSuccessUrl') ? $transactionModel->getSuccessUrl() : $transactionModel->getReceiptPageUrl(),
             'order' => [
                 'uuid' => $transactionModel->order->uuid,
             ],
