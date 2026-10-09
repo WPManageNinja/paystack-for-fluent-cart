@@ -7,14 +7,13 @@ use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
 use FluentCart\App\Models\Subscription;
 use FluentCart\Framework\Support\Arr;
-use FluentCart\App\Events\Order\OrderRefund;
+use FluentCart\App\Services\Payments\Refund;
 use FluentCart\App\Events\Subscription\SubscriptionActivated;
 use FluentCart\App\Services\DateTime\DateTime;
 use PaystackFluentCart\Settings\PaystackSettingsBase;
 use PaystackFluentCart\Confirmations\PaystackConfirmations;
 use PaystackFluentCart\PaystackHelper;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
-use PaystackFluentCart\Refund\PaystackRefund;
 
 class PaystackWebhook
 {
@@ -337,8 +336,6 @@ class PaystackWebhook
            $this->sendResponse(200, 'Parent transaction found, refund processing can be handled here.');
         }
 
-        $currentCreatedRefund = null;
-
         $refundId = Arr::get($refund, 'id');
         $amount = Arr::get($refund, 'amount');
         $refundCurrency = Arr::get($refund, 'currency');
@@ -361,12 +358,7 @@ class PaystackWebhook
         ];
 
 
-        $syncedRefund = (new PaystackRefund())->createOrUpdateIpnRefund($refundData, $parentTransaction);
-        if ($syncedRefund->wasRecentlyCreated) {
-            $currentCreatedRefund = $syncedRefund;
-        }
-
-        (new OrderRefund($order, $currentCreatedRefund))->dispatch();
+        Refund::createOrRecordRefund($refundData, $parentTransaction);
 
 
     }

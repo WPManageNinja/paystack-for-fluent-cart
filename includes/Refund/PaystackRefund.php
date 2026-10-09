@@ -53,7 +53,7 @@ class PaystackRefund
         }
 
         $status = Arr::get($refund, 'data.status');
-        $acceptedStatus = ['pending', 'processing', 'processed'];
+        $acceptedStatus = ['pending', 'processing', 'processed', 'needs-attention'];
 
         if (!in_array($status, $acceptedStatus)) {
             return new \WP_Error('refund_failed', __('Refund could not be processed in Paystack. Please check your Paystack account', 'paystack-for-fluent-cart'));
@@ -102,55 +102,4 @@ class PaystackRefund
 
         return $createdRefund;
     }
-
-    public static function createOrUpdateIpnRefund($refundData, $parentTransaction)
-    {
-        $allRefunds = OrderTransaction::query()
-            ->where('order_id', $refundData['order_id'])
-            ->where('transaction_type', Status::TRANSACTION_TYPE_REFUND)
-            ->orderBy('id', 'DESC')
-            ->get();
-
-        if ($allRefunds->isEmpty()) {
-            // This is the first refund for this order
-            $createdRefund = OrderTransaction::query()->create($refundData);
-            return $createdRefund instanceof OrderTransaction ? $createdRefund : null;
-        }
-
-        $currentRefundPaystackId = Arr::get($refundData, 'vendor_charge_id', '');
-
-        $existingLocalRefund = null;
-        foreach ($allRefunds as $refund) {
-            if ($refund->vendor_charge_id == $refundData['vendor_charge_id']) {
-                if ($refund->total != $refundData['total']) {
-                    $refund->fill($refundData);
-                    $refund->save();
-                }
-                // This refund already exists
-                return $refund;
-            }
-
-            if (!$refund->vendor_charge_id) { // This is a local refund without vendor charge id
-                $refundPaystackId = Arr::get($refund->meta, 'paystack_refund_id', '');
-                $isRefundMatched = $refundPaystackId == $currentRefundPaystackId;
-
-                // This is a local refund without vendor charge id, we will update it
-                if ($refund->total == $refundData['total'] && $isRefundMatched) {
-                    $existingLocalRefund = $refund;
-                }
-            }
-        }
-
-        if ($existingLocalRefund) {
-            $existingLocalRefund->fill($refundData);
-            $existingLocalRefund->save();
-            return $existingLocalRefund;
-        }
-
-        $createdRefund = OrderTransaction::query()->create($refundData);
-        PaymentHelper::updateTransactionRefundedTotal($parentTransaction, $createdRefund->total);
-
-        return $createdRefund;
-    }
-
 }
