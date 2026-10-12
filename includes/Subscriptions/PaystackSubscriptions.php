@@ -128,6 +128,8 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'name'              => $subscription->item_name,
             'description'       => $fctPaystackPlanId,   
             'amount'            => (int)($subscription->recurring_total),
+            // Without it Paystack creates the plan in the account's default currency
+            'currency'          => strtoupper($transaction->currency),
             'interval'          => Arr::get($billingPeriod, 'interval_unit'),
             'send_invoices'    => apply_filters('fluent_cart/paystack/send_invoices_for_subscription_plan', true, [
                 'subscription' => $subscription,
@@ -154,7 +156,9 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
 
         if ($paystackPlanCode) {
             $plan = PaystackAPI::getPaystackObject('plan/' . $paystackPlanCode);
-            if (!is_wp_error($plan) && Arr::get($plan, 'status') === true) {
+            // Plans cached before the currency was sent may be in the account's default currency
+            if (!is_wp_error($plan) && Arr::get($plan, 'status') === true
+                && strtoupper((string) Arr::get($plan, 'data.currency')) === $planData['currency']) {
                 return $plan;
             }
         }
