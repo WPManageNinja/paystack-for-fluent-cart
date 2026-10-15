@@ -153,7 +153,7 @@ class PaystackWebhook
         // Check if already processed
         if ($transactionModel->status == Status::TRANSACTION_SUCCEEDED) {
             wp_send_json([
-                'redirect_url' => $transactionModel->getReceiptPageUrl(),
+                'redirect_url' => method_exists($transactionModel, 'getSuccessUrl') ? $transactionModel->getSuccessUrl() : $transactionModel->getReceiptPageUrl(),
                 'order' => [
                     'uuid' => $transactionModel->order->uuid,
                 ],
