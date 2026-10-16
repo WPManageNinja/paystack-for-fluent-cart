@@ -2,6 +2,7 @@
 
 namespace PaystackFluentCart\Webhook;
 
+use FluentCart\App\Helpers\Helper;
 use FluentCart\App\Helpers\Status;
 use FluentCart\App\Models\Order;
 use FluentCart\App\Models\OrderTransaction;
@@ -13,6 +14,7 @@ use FluentCart\App\Services\DateTime\DateTime;
 use PaystackFluentCart\Settings\PaystackSettingsBase;
 use PaystackFluentCart\Confirmations\PaystackConfirmations;
 use PaystackFluentCart\PaystackHelper;
+use PaystackFluentCart\API\PaystackAPI;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
 
 class PaystackWebhook
@@ -54,6 +56,10 @@ class PaystackWebhook
         }
 
         $order = $this->getFluenCartOrder($data);
+
+        if (!$order && Arr::get($data, 'event') === 'refund.processed') {
+            $this->sendResponse(200, 'Parent transaction not found');
+        }
 
         if (!$order) {
             http_response_code(404);
@@ -320,49 +326,147 @@ class PaystackWebhook
 
     public function handleRefundProcessed($data)
     {
-       $refund = Arr::get($data, 'payload');
-       $order = Arr::get($data, 'order');
-    
-       $transactionReference = Arr::get($refund, 'transaction_reference');
-       $transactionHash = explode('_', $transactionReference)[0];
+        $result = $this->recordRefundFromWebhook(Arr::get($data, 'payload', []));
 
-       $parentTransaction = OrderTransaction::query()
-            ->where('uuid', $transactionHash)
-            ->where('payment_method', 'paystack')
-            ->first();
-
-
-        if (!$parentTransaction) {
-           $this->sendResponse(200, 'Parent transaction found, refund processing can be handled here.');
+        if (is_wp_error($result)) {
+            $this->sendResponse(Arr::get($result->get_error_data(), 'status', 500), $result->get_error_message());
         }
 
-        $refundId = Arr::get($refund, 'id');
-        $amount = Arr::get($refund, 'amount');
-        $refundCurrency = Arr::get($refund, 'currency');
+        $this->sendResponse(200, $result);
+    }
 
-        // Prepare refund data matching Stripe pattern
+    /**
+     * @param array $refund refund.processed `data`; it carries no refund id.
+     * @return string|\WP_Error Response message, or an error whose data.status is the HTTP code.
+     */
+    public function recordRefundFromWebhook($refund)
+    {
+        $transactionHash = explode('_', (string) Arr::get($refund, 'transaction_reference'))[0];
+
+        $parentTransaction = $transactionHash ? OrderTransaction::query()
+            ->where('uuid', $transactionHash)
+            ->where('payment_method', 'paystack')
+            ->first() : null;
+
+        if (!$parentTransaction) {
+            return 'Parent transaction not found';
+        }
+
+        $amount = (int) Arr::get($refund, 'amount');
+
+        $refundId = $this->findUnrecordedRefundId($parentTransaction, $amount);
+
+        if (is_wp_error($refundId)) {
+            return $refundId;
+        }
+
+        if (!$refundId) {
+            return 'Refund already recorded';
+        }
+
         $refundData = [
-            'order_id'           => $order->id,
-            'transaction_type'   => Status::TRANSACTION_TYPE_REFUND,
-            'status'             => Status::TRANSACTION_REFUNDED,
-            'payment_method'     => 'paystack',
-            'payment_mode'       => $parentTransaction->payment_mode,
-            'vendor_charge_id'   => $refundId,
-            'total'              => $amount,
-            'currency'           => $refundCurrency,
-            'meta'               => [
+            'order_id'         => $parentTransaction->order_id,
+            'transaction_type' => Status::TRANSACTION_TYPE_REFUND,
+            'status'           => Status::TRANSACTION_REFUNDED,
+            'payment_method'   => 'paystack',
+            'payment_mode'     => $parentTransaction->payment_mode,
+            'vendor_charge_id' => $refundId,
+            'total'            => $amount,
+            'currency'         => Arr::get($refund, 'currency'),
+            'meta'             => [
                 'parent_id'          => $parentTransaction->id,
                 'refund_description' => Arr::get($refund, 'description', ''),
                 'refund_source'      => 'webhook'
             ]
         ];
 
-
         $recordedRefund = Refund::createOrRecordRefund($refundData, $parentTransaction);
 
-        if (is_wp_error($recordedRefund) && $recordedRefund->get_error_code() === 'refund_lock_timeout') {
-            $this->sendResponse(503, $recordedRefund->get_error_message());
+        if (is_wp_error($recordedRefund)) {
+            return new \WP_Error($recordedRefund->get_error_code(), $recordedRefund->get_error_message(), ['status' => 503]);
         }
+
+        return 'Refund recorded';
+    }
+
+    /**
+     * Matches the webhook to a processed refund of the parent charge with the same amount
+     * that no local refund row holds yet.
+     *
+     * @return string|null|\WP_Error Refund id, null when every match is already recorded.
+     */
+    private function findUnrecordedRefundId(OrderTransaction $parentTransaction, $amount)
+    {
+        $recordedIds = OrderTransaction::query()
+            ->where('order_id', $parentTransaction->order_id)
+            ->where('transaction_type', Status::TRANSACTION_TYPE_REFUND)
+            ->whereNotNull('vendor_charge_id')
+            ->pluck('vendor_charge_id')
+            ->map(function ($id) {
+                return (string) $id;
+            })
+            ->toArray();
+
+        $from = gmdate('Y-m-d', strtotime($parentTransaction->created_at . ' UTC'));
+        $matchedRecorded = false;
+
+        for ($page = 1; $page <= 5; $page++) {
+            $response = PaystackAPI::getPaystackObject('refund?' . http_build_query([
+                'transaction' => $parentTransaction->vendor_charge_id,
+                'perPage'     => 100,
+                'page'        => $page,
+                'from'        => $from
+            ]));
+
+            if (is_wp_error($response)) {
+                return new \WP_Error($response->get_error_code(), $response->get_error_message(), ['status' => 503]);
+            }
+
+            $refunds = Arr::get($response, 'data', []);
+
+            foreach ($refunds as $remoteRefund) {
+                $transaction = Arr::get($remoteRefund, 'transaction');
+                $transactionId = is_array($transaction) ? Arr::get($transaction, 'id') : $transaction;
+
+                if ((string) $transactionId !== (string) $parentTransaction->vendor_charge_id
+                    || (int) Arr::get($remoteRefund, 'amount') !== $amount
+                    || Arr::get($remoteRefund, 'status') !== 'processed') {
+                    continue;
+                }
+
+                if (in_array((string) Arr::get($remoteRefund, 'id'), $recordedIds, true)) {
+                    $matchedRecorded = true;
+                    continue;
+                }
+
+                return (string) Arr::get($remoteRefund, 'id');
+            }
+
+            if (count($refunds) < 100) {
+                break;
+            }
+        }
+
+        if ($matchedRecorded) {
+            return null;
+        }
+
+        // Paystack retries for ~72h; log once per refund, not on every retry.
+        $logKey = 'fct_paystack_unmatched_refund_' . $parentTransaction->id . '_' . $amount;
+        if (!get_transient($logKey)) {
+            set_transient($logKey, 1, 3 * DAY_IN_SECONDS);
+            fluent_cart_add_log(__('Paystack Refund Not Matched', 'paystack-for-fluent-cart'), sprintf(
+                /* translators: 1: formatted refund amount, 2: Paystack transaction id */
+                __('Paystack sent a processed refund of %1$s for transaction %2$s, but no matching refund was found on Paystack. Paystack will retry.', 'paystack-for-fluent-cart'),
+                Helper::toDecimal($amount, true, $parentTransaction->currency),
+                $parentTransaction->vendor_charge_id
+            ), 'error', [
+                'module_name' => 'order',
+                'module_id'   => $parentTransaction->order_id
+            ]);
+        }
+
+        return new \WP_Error('paystack_refund_not_found', 'Refund not found on Paystack yet', ['status' => 503]);
     }
 
     public function getFluenCartOrder($data)

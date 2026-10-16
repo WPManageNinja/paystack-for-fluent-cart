@@ -1,0 +1,23 @@
+actor: IntegrationTester
+bootstrap: _bootstrap.php
+modules:
+  enabled:
+    - lucatume\WPBrowser\Module\WPLoader
+  config:
+    lucatume\WPBrowser\Module\WPLoader:
+      wpRootFolder: "%WORDPRESS_ROOT_DIR%"
+      dbName: '%TEST_DB_NAME%'
+      dbHost: '%TEST_DB_HOST%'
+      dbUser: '%TEST_DB_USER%'
+      dbPassword: '%TEST_DB_PASSWORD%'
+      wpDebug: true
+      tablePrefix: '%TEST_TABLE_PREFIX%'
+      domain: '%WORDPRESS_DOMAIN%'
+      adminEmail: 'admin@%WORDPRESS_DOMAIN%'
+      title: 'Paystack for FluentCart Tests'
+      plugins:
+        - '%FLUENT_CART%/fluent-cart.php'
+        - '%FLUENT_CART_PRO%/fluent-cart-pro.php'
+        - 'paystack-for-fluent-cart/paystack-for-fluent-cart.php'
+      theme: ''
+      loadOnly: false
