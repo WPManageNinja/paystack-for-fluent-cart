@@ -91,6 +91,59 @@ class PaystackRefundWebhookTest extends WPTestCase
         $this->assertSame(['18711274', '18711300'], $ids);
     }
 
+    public function test_local_refund_without_vendor_id_is_adopted(): void
+    {
+        $parent = $this->createPaidOrder();
+        $this->createRefundRow($parent, '', 5000);
+        $this->mockListRefunds([
+            $this->remoteRefund(18711460, (int) $parent->vendor_charge_id, 5000),
+        ]);
+
+        $result = (new PaystackWebhook())->recordRefundFromWebhook($this->webhookData($parent, '5000'));
+
+        $this->assertSame('Refund recorded', $result);
+        $refunds = $this->refundRows($parent);
+        $this->assertCount(1, $refunds);
+        $this->assertSame('18711460', $refunds[0]->vendor_charge_id);
+    }
+
+    public function test_concurrent_delivery_answers_503_and_retry_records_the_sibling_refund(): void
+    {
+        $parent = $this->createPaidOrder();
+        $vendorChargeId = (int) $parent->vendor_charge_id;
+        add_filter('pre_http_request', function ($pre, $args, $url) use ($parent, $vendorChargeId) {
+            $this->requests[] = $url;
+            if (count($this->requests) === 1) {
+                $this->createRefundRow($parent, '18711274', 2000);
+            }
+            return [
+                'response' => ['code' => 200, 'message' => 'OK'],
+                'body'     => wp_json_encode(['status' => true, 'data' => [
+                    $this->remoteRefund(18711274, $vendorChargeId, 2000),
+                    $this->remoteRefund(18711300, $vendorChargeId, 2000),
+                ]]),
+                'headers'  => [],
+                'cookies'  => [],
+            ];
+        }, 10, 3);
+
+        $webhook = new PaystackWebhook();
+        $first = $webhook->recordRefundFromWebhook($this->webhookData($parent, '2000'));
+
+        $this->assertInstanceOf(\WP_Error::class, $first);
+        $this->assertSame(503, $first->get_error_data()['status']);
+        $this->assertCount(1, $this->refundRows($parent));
+
+        $retry = $webhook->recordRefundFromWebhook($this->webhookData($parent, '2000'));
+
+        $this->assertSame('Refund recorded', $retry);
+        $ids = array_map(function ($row) {
+            return $row->vendor_charge_id;
+        }, $this->refundRows($parent));
+        sort($ids);
+        $this->assertSame(['18711274', '18711300'], $ids);
+    }
+
     public function test_unprocessed_or_other_amount_refund_is_not_matched(): void
     {
         $parent = $this->createPaidOrder();

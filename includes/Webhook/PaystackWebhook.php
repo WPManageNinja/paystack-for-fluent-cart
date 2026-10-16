@@ -386,6 +386,11 @@ class PaystackWebhook
             return new \WP_Error($recordedRefund->get_error_code(), $recordedRefund->get_error_message(), ['status' => 503]);
         }
 
+        // Another delivery recorded this id after our lookup; retry so an equal-amount sibling refund is not skipped.
+        if (!$recordedRefund->wasRecentlyCreated && !$recordedRefund->wasChanged('vendor_charge_id')) {
+            return new \WP_Error('paystack_refund_recorded_concurrently', 'Refund recorded by a concurrent delivery', ['status' => 503]);
+        }
+
         return 'Refund recorded';
     }
 
