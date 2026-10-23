@@ -40,13 +40,13 @@ function paystack_fc_check_dependencies() {
         return false;
     }
     
-    if (version_compare(FLUENTCART_VERSION, '2.2.0', '<')) {
+    if (version_compare(FLUENTCART_VERSION, '2.3.0', '<')) {
         add_action('admin_notices', function() {
             ?>
             <div class="notice notice-error">
                 <p>
                     <strong><?php esc_html_e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
-                    <?php esc_html_e('requires FluentCart version 2.2.0 or higher', 'paystack-for-fluent-cart'); ?>
+                    <?php esc_html_e('requires FluentCart version 2.3.0 or higher', 'paystack-for-fluent-cart'); ?>
                 </p>
             </div>
             <?php
