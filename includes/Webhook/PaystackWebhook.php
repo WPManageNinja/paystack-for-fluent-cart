@@ -167,6 +167,41 @@ class PaystackWebhook
             ], 200);
         }
 
+        // requested_amount (the total before customer-borne fees) is read from the verify API when the payload lacks it.
+        $charge = $paystackTransaction;
+        if (Arr::get($charge, 'requested_amount') === null) {
+            $remote = ctype_digit((string) $paystackTransactionId)
+                ? PaystackAPI::getPaystackObject('transaction/' . $paystackTransactionId)
+                : null;
+
+            if (is_wp_error($remote) || Arr::get($remote, 'status') !== true) {
+                wp_send_json([
+                    'message' => 'Could not verify the charge with Paystack.',
+                    'status' => 'failed'
+                ], 503);
+            }
+
+            $charge = Arr::get($remote, 'data', []);
+        }
+
+        if (!(new PaystackConfirmations())->chargeMatchesTransaction($charge, $transactionModel)) {
+            fluent_cart_add_log(__('Paystack charge mismatch', 'paystack-for-fluent-cart'), sprintf(
+                'Ignored charge %s: %s %s does not match the transaction total %s %s.',
+                $paystackTransactionId,
+                Arr::get($charge, 'requested_amount') ?? Arr::get($charge, 'amount'),
+                Arr::get($charge, 'currency'),
+                $transactionModel->total,
+                $transactionModel->currency
+            ), 'error', [
+                'module_name' => 'order',
+                'module_id'   => $transactionModel->order_id,
+            ]);
+
+            wp_send_json([
+                'message' => 'Charge does not match the transaction.',
+                'status' => 'failed'
+            ], 200);
+        }
 
         $paystackPlan = Arr::get($transactionMeta, 'paystack_plan', '');
         $paystackCustomer = Arr::get($paystackTransaction, 'customer.customer_code', []);

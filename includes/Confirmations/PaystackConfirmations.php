@@ -169,7 +169,7 @@ class PaystackConfirmations
 
         $amount = Arr::get($transactionData, 'amount', 0); // Paystack returns amount in kobo/cents
         $currency = Arr::get($transactionData, 'currency');
-        $transactionMeta = Arr::get($args, 'charge.metadata', []);
+        $isAuthorizationOnly = (int) $transactionModel->total <= 0;
 
         $metaData = array_merge($transactionModel->meta ?? [], $billingInfo);
 
@@ -205,7 +205,7 @@ class PaystackConfirmations
         ]);
 
         // refund the amount if it was just for authorization
-        if (Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes') {
+        if ($isAuthorizationOnly) {
             // refund the amount as it was just for authorization
             $response = (new PaystackRefund())->refundMinimumAuthorizationAmount($transactionModel);
 
@@ -251,7 +251,7 @@ class PaystackConfirmations
         }
 
         return Arr::get($charge, 'status') === 'success'
-            && (int) Arr::get($charge, 'requested_amount', Arr::get($charge, 'amount', 0)) === $expectedAmount
+            && (int) (Arr::get($charge, 'requested_amount') ?? Arr::get($charge, 'amount', 0)) === $expectedAmount
             && strtoupper((string) Arr::get($charge, 'currency', '')) === strtoupper((string) $transactionModel->currency);
     }
 
