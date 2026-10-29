@@ -11,6 +11,7 @@ use FluentCart\App\Modules\Subscriptions\Services\SubscriptionService;
 use FluentCart\App\Services\DateTime\DateTime;
 use FluentCart\Framework\Support\Arr;
 use PaystackFluentCart\API\PaystackAPI;
+use PaystackFluentCart\PaystackHelper;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
 use PaystackFluentCart\Refund\PaystackRefund;
 
@@ -53,7 +54,11 @@ class PaystackConfirmations
         }
 
         $paystackTransactionId = sanitize_text_field(wp_unslash($_REQUEST['trx_id']) ?? '');
-        
+
+        if (!ctype_digit($paystackTransactionId)) {
+            $this->confirmationFailed(400);
+        }
+
         // get the transaction from paystack using the reference
         $paystackTransaction = PaystackAPI::getPaystackObject('transaction/' . $paystackTransactionId);
 
@@ -92,6 +97,9 @@ class PaystackConfirmations
 
         $data = Arr::get($paystackTransaction, 'data');
 
+        if (!$this->chargeMatchesTransaction($data, $transactionModel)) {
+            $this->confirmationFailed(422);
+        }
 
         $paystackPlan = Arr::get($transactionMeta, 'paystack_plan', '');
         $subscriptionHash = Arr::get($transactionMeta, 'subscription_hash', '');
@@ -232,6 +240,19 @@ class PaystackConfirmations
         }
 
         return (new StatusHelper($order))->syncOrderStatuses($transactionModel);
+    }
+
+    public function chargeMatchesTransaction($charge, OrderTransaction $transactionModel)
+    {
+        // Expected amount comes from the local row; the metadata flag is buyer-controllable.
+        $expectedAmount = (int) $transactionModel->total;
+        if ($expectedAmount <= 0) {
+            $expectedAmount = (int) PaystackHelper::getMinimumAmountForAuthorization($transactionModel->currency);
+        }
+
+        return Arr::get($charge, 'status') === 'success'
+            && (int) Arr::get($charge, 'requested_amount', Arr::get($charge, 'amount', 0)) === $expectedAmount
+            && strtoupper((string) Arr::get($charge, 'currency', '')) === strtoupper((string) $transactionModel->currency);
     }
 
     public function confirmationSuccess(OrderTransaction $transactionModel)
