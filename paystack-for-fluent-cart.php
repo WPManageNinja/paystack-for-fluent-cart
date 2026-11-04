@@ -3,13 +3,13 @@
  * Plugin Name: Paystack for FluentCart
  * Plugin URI: https://fluentcart.com
  * Description: Accept payments via Paystack in FluentCart - supports one-time payments, subscriptions, and automatic refunds via webhooks.
- * Version: 1.0.5
+ * Version: 1.1.0
  * Author: FluentCart
  * Author URI: https://fluentcart.com
  * Text Domain: paystack-for-fluent-cart
  * Domain Path: /languages
  * Requires at least: 5.6
- * Tested up to: 6.9
+ * Tested up to: 7.1
  * Requires PHP: 7.4
  * License: GPLv2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -19,7 +19,7 @@
 defined('ABSPATH') || exit('Direct access not allowed.');
 
 // Define plugin constants
-define('PAYSTACK_FCT_VERSION', '1.0.5');
+define('PAYSTACK_FCT_VERSION', '1.1.0');
 define('PAYSTACK_FCT_PLUGIN_FILE', __FILE__);
 define('PAYSTACK_FCT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('PAYSTACK_FCT_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -40,13 +40,13 @@ function paystack_fc_check_dependencies() {
         return false;
     }
     
-    if (version_compare(FLUENTCART_VERSION, '2.3.0', '<')) {
+    if (version_compare(FLUENTCART_VERSION, '1.2.5', '<')) {
         add_action('admin_notices', function() {
             ?>
             <div class="notice notice-error">
                 <p>
                     <strong><?php esc_html_e('Paystack for FluentCart', 'paystack-for-fluent-cart'); ?></strong> 
-                    <?php esc_html_e('requires FluentCart version 2.3.0 or higher', 'paystack-for-fluent-cart'); ?>
+                    <?php esc_html_e('requires FluentCart version 1.2.5 or higher', 'paystack-for-fluent-cart'); ?>
                 </p>
             </div>
             <?php
