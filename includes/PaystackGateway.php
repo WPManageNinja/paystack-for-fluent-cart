@@ -52,6 +52,7 @@ class PaystackGateway extends AbstractPaymentGateway
     public function meta(): array
     {
         $logo = PAYSTACK_FCT_PLUGIN_URL . 'assets/images/paystack-logo.svg';
+        $logoLight = PAYSTACK_FCT_PLUGIN_URL . 'assets/images/paystack-logo-light.svg';
         
         return [
             'title'              => __('Paystack', 'paystack-for-fluent-cart'),
@@ -61,6 +62,7 @@ class PaystackGateway extends AbstractPaymentGateway
             'admin_title'        => 'Paystack',
             'description'        => __('Pay securely with Paystack - Card, Bank Transfer, USSD, and more', 'paystack-for-fluent-cart'),
             'logo'               => $logo,
+            'logo_light'         => $logoLight,
             'tag' => 'beta',
             'icon'               => $logo,
             'brand_color'        => '#00C3F7',
