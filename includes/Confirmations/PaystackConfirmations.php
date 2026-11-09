@@ -129,6 +129,7 @@ class PaystackConfirmations
                     'authorization_code' => $paystackCustomerAuthorizationCode,
                     'plan_code' => $paystackPlan,
                     'billing_info' => $billingInfo,
+                    'transaction' => $transactionModel,
                     'is_first_payment_only_for_authorization' => Arr::get($transactionMeta, 'amount_is_for_authorization_only', 'no') === 'yes'
                 ]);
 
