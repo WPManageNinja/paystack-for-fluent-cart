@@ -108,6 +108,12 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'interval_unit' => $interval
         ];
 
+        $invoiceLimit = (int) $subscription->bill_times;
+        if ($invoiceLimit && $order->type === Status::ORDER_TYPE_RENEWAL) {
+            // Our first charge is not made on the plan, so the plan raises only the installments left after it
+            $invoiceLimit = max(1, (int) self::installmentsLeftAfter($subscription, $transaction));
+        }
+
         $billingPeriod = apply_filters('fluent_cart/subscription_billing_period', $billingPeriod, [
             'subscription_interval' => $subscription->billing_interval,
             'payment_method' => 'paystack',
@@ -119,7 +125,7 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             . $order->variation_id
             . $subscription->recurring_total . '_'
             . $subscription->billing_interval . '_'
-            . $subscription->bill_times . '_'
+            . $invoiceLimit . '_'
             . $subscription->trial_days . '_'
             . $transaction->currency;
 
@@ -141,8 +147,8 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             ])
         ];
 
-        if ($subscription->bill_times) {
-            $planData['invoice_limit'] = $subscription->bill_times;
+        if ($invoiceLimit) {
+            $planData['invoice_limit'] = $invoiceLimit;
         }
 
         $fctPaystackPlanId = apply_filters('fluent_cart/paystack_recurring_plan_id', $fctPaystackPlanId, [
@@ -347,6 +353,27 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
         }
 
         $order = $subscriptionModel->order;
+
+        $transaction = Arr::get($args, 'transaction');
+        if (self::paysLastInstallment($subscriptionModel, $transaction)) {
+            fluent_cart_add_log(__('Paystack Subscription Not Created', 'paystack-for-fluent-cart'), 'Reactivation paid the last installment; no Paystack subscription created.', 'info', [
+                'module_name' => 'order',
+                'module_id'   => $transaction->order_id,
+            ]);
+
+            // Non-empty so the renewal is recorded and core completes the subscription
+            $updateData = [
+                'vendor_customer_id' => Arr::get($args, 'customer_code'),
+            ];
+
+            // Another gateway's subscription id must not stay on a Paystack subscription
+            if (Arr::get($transaction->order->config, 'old_payment_method', 'paystack') !== 'paystack') {
+                $updateData['vendor_subscription_id'] = '';
+            }
+
+            return $updateData;
+        }
+
         $startDate = null;
         $oldStatus = $subscriptionModel->status;
 
@@ -491,6 +518,49 @@ class PaystackSubscriptions extends AbstractSubscriptionModule
             'status'      => Status::SUBSCRIPTION_CANCELED,
             'canceled_at' => DateTime::gmtNow()->format('Y-m-d H:i:s')
         ];
+    }
+
+    /**
+     * Whether $transaction, a reactivation (renewal order) charge, pays the subscription's last installment.
+     *
+     * @param Subscription $subscription
+     * @param OrderTransaction|null $transaction
+     * @return bool
+     */
+    public static function paysLastInstallment($subscription, $transaction): bool
+    {
+        if (!$transaction instanceof OrderTransaction || !$transaction->order || $transaction->order->type !== Status::ORDER_TYPE_RENEWAL) {
+            return false;
+        }
+
+        return self::installmentsLeftAfter($subscription, $transaction) === 0;
+    }
+
+    /**
+     * Installments left once $transaction is paid; null when bill_times is 0 (unlimited).
+     * $transaction is counted once if it has not succeeded yet.
+     *
+     * @param Subscription $subscription
+     * @param OrderTransaction $transaction
+     * @return int|null
+     */
+    public static function installmentsLeftAfter($subscription, $transaction)
+    {
+        $billTimes = (int) $subscription->bill_times;
+        if ($billTimes <= 0) {
+            return null;
+        }
+
+        $billsCount = $subscription->calculateBillCount();
+        // Read after counting: succeeded means a webhook may have confirmed it mid-count, so count again
+        $current = OrderTransaction::query()->find($transaction->id);
+        if ($current && $current->status === Status::TRANSACTION_SUCCEEDED) {
+            $billsCount = $subscription->calculateBillCount();
+        } elseif ($current && $current->total > 0) {
+            $billsCount++;
+        }
+
+        return max(0, $billTimes - $billsCount);
     }
 
     /**
