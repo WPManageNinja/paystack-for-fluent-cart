@@ -33,7 +33,7 @@ class PaystackAPI
     }
 
 
-    private static function request($endpoint, $method = 'GET', $data = [])
+    private static function request($endpoint, $method = 'GET', $data = [], $secretKey = null)
     {
         // Input validation
         if (empty($endpoint) || !is_string($endpoint)) {
@@ -48,7 +48,9 @@ class PaystackAPI
         }
 
         $url = self::$baseUrl . $endpoint;
-        $secretKey = self::getSettings()->getSecretKey();
+        if ($secretKey === null) {
+            $secretKey = self::getSettings()->getSecretKey();
+        }
 
         if (!$secretKey) {
             return new \WP_Error('missing_api_key', 'Paystack API key is not configured');
@@ -92,9 +94,9 @@ class PaystackAPI
     }
 
 
-    public static function getPaystackObject($endpoint, $params = [])
+    public static function getPaystackObject($endpoint, $params = [], $secretKey = null)
     {
-        return self::request($endpoint, 'GET', $params);
+        return self::request($endpoint, 'GET', $params, $secretKey);
     }
 
     public static function createPaystackObject($endpoint, $data = [])

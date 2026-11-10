@@ -18,6 +18,7 @@ use FluentCart\App\Helpers\Status;
 use FluentCart\Framework\Support\Arr;
 use FluentCart\App\Services\Payments\PaymentInstance;
 use FluentCart\App\Modules\PaymentMethods\Core\AbstractPaymentGateway;
+use PaystackFluentCart\API\PaystackAPI;
 use PaystackFluentCart\Settings\PaystackSettingsBase;
 use PaystackFluentCart\Subscriptions\PaystackSubscriptions;
 use PaystackFluentCart\Refund\PaystackRefund;
@@ -338,6 +339,46 @@ class PaystackGateway extends AbstractPaymentGateway
                 'label' => __('Webhook Configuration', 'paystack-for-fluent-cart'),
                 'type'  => 'html_attr'
             ],
+        ];
+    }
+
+    /**
+     * Calls Paystack "Check Balance" (GET /balance) with the saved secret key of $mode.
+     * https://paystack.com/docs/api/transfer-control/#balance
+     *
+     * @param string $mode 'test' or 'live'
+     * @return array|\WP_Error ['message' => string] on success
+     */
+    public function testConnection(string $mode)
+    {
+        $secretKey = $this->settings->getSecretKey($mode);
+
+        if (!$secretKey) {
+            return new \WP_Error('missing_credentials', $mode === 'live'
+                ? __('No live secret key is saved.', 'paystack-for-fluent-cart')
+                : __('No test secret key is saved.', 'paystack-for-fluent-cart'));
+        }
+
+        if (strpos($secretKey, $mode === 'live' ? 'sk_test_' : 'sk_live_') === 0) {
+            return new \WP_Error('mode_mismatch', $mode === 'live'
+                ? __('The live secret key field holds a test key. Paste a key that starts with sk_live_.', 'paystack-for-fluent-cart')
+                : __('The test secret key field holds a live key. Paste a key that starts with sk_test_.', 'paystack-for-fluent-cart'));
+        }
+
+        $balance = PaystackAPI::getPaystackObject('balance', [], $secretKey);
+
+        if (is_wp_error($balance)) {
+            return $balance;
+        }
+
+        if (Arr::get($balance, 'status') !== true) {
+            return new \WP_Error('paystack_api_error', Arr::get($balance, 'message') ?: __('Paystack did not accept the secret key.', 'paystack-for-fluent-cart'));
+        }
+
+        return [
+            'message' => $mode === 'live'
+                ? __('Paystack accepted the live secret key.', 'paystack-for-fluent-cart')
+                : __('Paystack accepted the test secret key.', 'paystack-for-fluent-cart')
         ];
     }
 
